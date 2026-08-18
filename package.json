@@ -1,0 +1,42 @@
+{
+  "name": "acervinox",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host localhost",
+    "dev:server": "node --watch server/index.js",
+    "dev:all": "concurrently -k \"yarn dev\" \"yarn dev:server\"",
+    "build": "vite build",
+    "prestart": "yarn build",
+    "start": "node server/index.js",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.0.5",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^1.32.0",
+    "mongoose": "^9.9.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "concurrently": "^10.0.5",
+    "oxlint": "^1.75.0",
+    "typescript": "~6.0.2"
+  }
+}

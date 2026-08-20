@@ -287,7 +287,9 @@ export function ClientAuth() {
           </form>
         )}
 
-        <img src="/logo-acervinox.png" alt="acervinox" className="capp-auth-logo" />
+        <div className="capp-auth-brand">
+          <img src="/logo-acervinox.png" alt="acervinox" className="capp-auth-logo" />
+        </div>
       </div>
     </div>
   )

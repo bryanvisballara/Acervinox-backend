@@ -1,7 +1,8 @@
 import { ArrowUpRight } from 'lucide-react'
 import { useRef, type MouseEvent } from 'react'
+import { Link } from 'react-router-dom'
 
-export function Hero({ onLogin }: { onLogin: () => void }) {
+export function Hero() {
   const frame = useRef<HTMLDivElement>(null)
 
   const onMove = (e: MouseEvent<HTMLDivElement>) => {
@@ -48,9 +49,9 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
               Ver catálogo
               <ArrowUpRight size={16} />
             </a>
-            <button type="button" className="btn btn-ghost" onClick={onLogin}>
+            <Link to="/login" className="btn btn-ghost">
               Portal clientes
-            </button>
+            </Link>
           </div>
           <div className="mt-14 grid grid-cols-3 gap-6 border-t border-line pt-6 max-w-lg">
             {[

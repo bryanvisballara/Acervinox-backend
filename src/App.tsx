@@ -1,80 +1,85 @@
-import { useEffect, useState } from 'react'
-import { Catalog } from './components/Catalog'
-import { Contact } from './components/Contact'
-import { Craft } from './components/Craft'
-import { Footer } from './components/Footer'
-import { Header } from './components/Header'
-import { Hero } from './components/Hero'
-import { Loader } from './components/Loader'
-import { LoginModal } from './components/LoginModal'
-import { Marquee } from './components/Marquee'
-import { Showroom } from './components/Showroom'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { RequireAuth } from './components/RequireAuth'
+import { AuthProvider } from './context/AuthContext'
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
+import { LandingPage } from './pages/LandingPage'
+import { LoginPage } from './pages/LoginPage'
+import { RegisterPage } from './pages/RegisterPage'
+import { AdminDashboard } from './pages/admin/AdminDashboard'
+import { AdminLayout } from './pages/admin/AdminLayout'
+import { AccountingPage } from './pages/admin/AccountingPage'
+import { CatalogPage } from './pages/admin/CatalogPage'
+import { ClientsPage } from './pages/admin/ClientsPage'
+import { CotizadorPage } from './pages/admin/CotizadorPage'
+import { FunnelPage } from './pages/admin/FunnelPage'
+import { MaintenancesPage } from './pages/admin/MaintenancesPage'
+import { OrdersPage } from './pages/admin/OrdersPage'
+import { ProductDetailPage } from './pages/admin/ProductDetailPage'
+import { StageOrdersPage } from './pages/admin/StageOrdersPage'
+import { ClientLayout } from './pages/client/ClientLayout'
+import { ClientOrderPage } from './pages/client/ClientOrderPage'
+import { ClientPayPage } from './pages/client/ClientPayPage'
+import { ClientPortal } from './pages/client/ClientPortal'
+import { ClientTallerPage } from './pages/client/ClientTallerPage'
+import { ClientTrackPage } from './pages/client/ClientTrackPage'
+import { WorkshopLayout } from './pages/workshop/WorkshopLayout'
+
+function LegacyOrderRedirect() {
+  const { id } = useParams()
+  return <Navigate to={`/admin/pedidos/${id}`} replace />
+}
 
 export default function App() {
-  const [login, setLogin] = useState(false)
-  const [booting, setBooting] = useState(true)
-  const [progress, setProgress] = useState(0)
-  const [cursor, setCursor] = useState({ x: -40, y: -40, hot: false, hide: false })
-
-  useEffect(() => {
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (reduce) {
-      setBooting(false)
-      return
-    }
-    const t = window.setTimeout(() => setBooting(false), 2550)
-    return () => window.clearTimeout(t)
-  }, [])
-
-  useEffect(() => {
-    const onScroll = () => {
-      const max = document.documentElement.scrollHeight - window.innerHeight
-      setProgress(max > 0 ? window.scrollY / max : 0)
-    }
-    const onMove = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      const hot = Boolean(target.closest('a, button'))
-      const hide = Boolean(target.closest('input, textarea'))
-      setCursor({ x: e.clientX, y: e.clientY, hot, hide })
-    }
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('mousemove', onMove)
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('mousemove', onMove)
-    }
-  }, [])
-
   return (
-    <>
-      {booting && <Loader />}
-      <div className="grain" />
-      <div className="progress" style={{ transform: `scaleX(${progress})` }} />
-      <div
-        className={`cursor ${cursor.hot ? 'hot' : ''}`}
-        style={{ left: cursor.x, top: cursor.y, opacity: cursor.hide ? 0 : 1 }}
-      />
-      <div
-        className="cursor-ring"
-        style={{
-          left: cursor.x,
-          top: cursor.y,
-          opacity: cursor.hide ? 0 : 0.7,
-          transition: 'left 0.18s ease, top 0.18s ease, opacity 0.2s ease',
-        }}
-      />
-      <Header onLogin={() => setLogin(true)} />
-      <main className={!booting ? 'is-ready' : ''}>
-        <Hero onLogin={() => setLogin(true)} />
-        <Marquee />
-        <Catalog />
-        <Craft />
-        <Showroom />
-        <Contact />
-      </main>
-      <Footer />
-      <LoginModal open={login} onClose={() => setLogin(false)} />
-    </>
+    <AuthProvider>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/registro" element={<RegisterPage />} />
+        <Route path="/recuperar" element={<ForgotPasswordPage />} />
+        <Route
+          path="/admin"
+          element={
+            <RequireAuth roles={['admin']}>
+              <AdminLayout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<AdminDashboard />} />
+          <Route path="etapas/:stageId" element={<StageOrdersPage />} />
+          <Route path="productos" element={<CatalogPage />} />
+          <Route path="productos/:id" element={<LegacyOrderRedirect />} />
+          <Route path="pedidos/:id" element={<ProductDetailPage />} />
+          <Route path="cotizador" element={<CotizadorPage />} />
+          <Route path="embudo" element={<FunnelPage />} />
+          <Route path="pedidos" element={<OrdersPage />} />
+          <Route path="clientes" element={<ClientsPage />} />
+          <Route path="contabilidad" element={<AccountingPage />} />
+          <Route path="mantenimientos" element={<MaintenancesPage />} />
+        </Route>
+        <Route
+          path="/workshop"
+          element={
+            <RequireAuth roles={['admin', 'workshop']}>
+              <WorkshopLayout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<AdminDashboard />} />
+          <Route path="etapas/:stageId" element={<StageOrdersPage />} />
+          <Route path="pedidos/:id" element={<ProductDetailPage />} />
+          <Route path="mantenimientos" element={<MaintenancesPage />} />
+        </Route>
+        <Route path="/portal" element={<ClientLayout />}>
+          <Route index element={<ClientPortal />} />
+          <Route path="guia/:code" element={<ClientTrackPage />} />
+          <Route path="cuenta" element={<Navigate to="/portal" replace />} />
+          <Route path="pago/:code" element={<ClientPayPage />} />
+          <Route path="taller" element={<ClientTallerPage />} />
+          <Route path="pedidos/:id" element={<ClientOrderPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AuthProvider>
   )
 }

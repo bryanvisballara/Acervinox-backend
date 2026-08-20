@@ -1,5 +1,6 @@
 import { Menu, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Logo } from './Logo'
 
 const links = [
@@ -9,7 +10,7 @@ const links = [
   { href: '#contacto', label: 'Contacto' },
 ]
 
-export function Header({ onLogin }: { onLogin: () => void }) {
+export function Header() {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
 
@@ -40,9 +41,9 @@ export function Header({ onLogin }: { onLogin: () => void }) {
             ))}
           </nav>
           <div className="flex items-center gap-3">
-            <button type="button" className="btn btn-red sheen" onClick={onLogin}>
+            <Link to="/login" className="btn btn-red sheen">
               Iniciar sesión
-            </button>
+            </Link>
             <button
               type="button"
               className="grid h-11 w-11 place-items-center border border-line lg:hidden"
@@ -66,16 +67,9 @@ export function Header({ onLogin }: { onLogin: () => void }) {
               {l.label}
             </a>
           ))}
-          <button
-            type="button"
-            className="btn btn-red mt-6 w-full"
-            onClick={() => {
-              setOpen(false)
-              onLogin()
-            }}
-          >
+          <Link to="/login" className="btn btn-red mt-6 w-full" onClick={() => setOpen(false)}>
             Iniciar sesión
-          </button>
+          </Link>
         </div>
       )}
     </>

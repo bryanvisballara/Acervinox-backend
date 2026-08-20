@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { isNativeApp } from '../lib/native'
 import { Logo } from './Logo'
 
 export function AuthShell({
@@ -17,11 +18,13 @@ export function AuthShell({
         <p className="mt-7 font-display text-3xl font-bold leading-none">{title}</p>
         <p className="mt-2 text-sm text-steel">{subtitle}</p>
         {children}
-        <p className="mt-6 text-center text-sm text-steel">
-          <Link to="/" className="font-semibold text-brand no-underline hover:underline">
-            Volver al inicio
-          </Link>
-        </p>
+        {!isNativeApp() && (
+          <p className="mt-6 text-center text-sm text-steel">
+            <Link to="/" className="font-semibold text-brand no-underline hover:underline">
+              Volver al inicio
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   )

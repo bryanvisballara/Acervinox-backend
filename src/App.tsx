@@ -23,17 +23,23 @@ import { ClientPortal } from './pages/client/ClientPortal'
 import { ClientTallerPage } from './pages/client/ClientTallerPage'
 import { ClientTrackPage } from './pages/client/ClientTrackPage'
 import { WorkshopLayout } from './pages/workshop/WorkshopLayout'
+import { isNativeApp } from './lib/native'
 
 function LegacyOrderRedirect() {
   const { id } = useParams()
   return <Navigate to={`/admin/pedidos/${id}`} replace />
 }
 
+function HomeRoute() {
+  if (isNativeApp()) return <Navigate to="/login" replace />
+  return <LandingPage />
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<HomeRoute />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/registro" element={<RegisterPage />} />
         <Route path="/recuperar" element={<ForgotPasswordPage />} />
@@ -78,7 +84,7 @@ export default function App() {
           <Route path="taller" element={<ClientTallerPage />} />
           <Route path="pedidos/:id" element={<ClientOrderPage />} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to={isNativeApp() ? '/login' : '/'} replace />} />
       </Routes>
     </AuthProvider>
   )

@@ -3,7 +3,7 @@
   "appName": "Acervinox",
   "webDir": "dist",
   "server": {
-    "url": "https://acervinox-backend.onrender.com",
+    "url": "https://acervinox-backend.onrender.com/login",
     "cleartext": false
   },
   "ios": {

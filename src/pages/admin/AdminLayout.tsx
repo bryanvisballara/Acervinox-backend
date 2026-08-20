@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { initPush } from '../../lib/pushClient'
+import { appHomePath } from '../../lib/native'
 
 const links = [
   { to: '/admin', label: 'Etapas de fabricación', icon: Layers, end: true },
@@ -47,7 +48,7 @@ export function AdminLayout() {
   const close = () => setOpen(false)
   const signOut = () => {
     logout()
-    navigate('/')
+    navigate(appHomePath())
   }
 
   return (

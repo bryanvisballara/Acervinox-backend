@@ -21,7 +21,7 @@ export function ClientLayout() {
   }
 
   if (user.role !== 'client' && user.role !== 'admin') {
-    return <Navigate to="/" replace />
+    return <Navigate to="/login" replace />
   }
 
   const first = user.name?.split(' ')[0] || 'Cliente'

@@ -140,7 +140,6 @@ export function ClientAuth() {
   return (
     <div className="capp capp-auth">
       <div className="capp-page">
-        <img src="/logo-acervinox.png" alt="acervinox" className="capp-auth-logo" />
         <p className="capp-kicker">App clientes</p>
         <h1 className="capp-title">{title}</h1>
         <p className="capp-copy">{subtitle}</p>
@@ -287,6 +286,8 @@ export function ClientAuth() {
             </button>
           </form>
         )}
+
+        <img src="/logo-acervinox.png" alt="acervinox" className="capp-auth-logo" />
       </div>
     </div>
   )

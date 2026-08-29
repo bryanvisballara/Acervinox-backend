@@ -77,3 +77,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+host
+host.zip

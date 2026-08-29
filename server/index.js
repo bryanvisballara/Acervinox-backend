@@ -17,6 +17,7 @@ import { visitsRouter } from './routes/visits.js'
 import { paymentsRouter } from './routes/payments.js'
 import { accountingRouter } from './routes/accounting.js'
 import { pushRouter } from './routes/push.js'
+import { corsOrigin } from './lib/corsOrigins.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -24,7 +25,7 @@ const PORT = process.env.PORT || 3000
 
 app.use(
   cors({
-    origin: process.env.CLIENT_ORIGIN || true,
+    origin: corsOrigin(),
     credentials: true,
   }),
 )

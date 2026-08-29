@@ -13,7 +13,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "cap:sync": "npm run build && npx cap sync ios",
-    "cap:ios": "npx cap open ios"
+    "cap:ios": "npx cap open ios",
+    "host:pack": "node scripts/pack-host.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -33,9 +33,9 @@ export function quotationHtml(quote, origin = '') {
               ...(item.specs || []).map((s) => `<li>${esc(s)}</li>`),
               ...(item.parts || []).map((p) => {
                 if (p.pricing === 'medida') {
-                  return `<li>${esc(p.name)} — ${p.measure || 0} ${esc(p.unit || 'm')} × ${cop(p.unitPrice)}</li>`
+                  return `<li>${esc(p.name)} — ${p.measure || 0} ${esc(p.unit || 'm')}</li>`
                 }
-                return `<li>${esc(p.name)} × ${p.qty || 1} — ${cop(p.unitPrice)}</li>`
+                return `<li>${esc(p.name)} × ${p.qty || 1}</li>`
               }),
             ].join('')}</ul>
           </div>

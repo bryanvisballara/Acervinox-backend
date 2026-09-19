@@ -6,7 +6,7 @@ export function RequireAuth({
   roles,
   children,
 }: {
-  roles: Array<'admin' | 'workshop' | 'client'>
+  roles: Array<'admin' | 'workshop' | 'maintenance' | 'client'>
   children: React.ReactNode
 }) {
   const { user, loading } = useAuth()

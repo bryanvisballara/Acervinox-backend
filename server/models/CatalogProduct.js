@@ -18,6 +18,8 @@ const catalogProductSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     origin: { type: String, enum: ['nacional', 'importado'], default: 'nacional' },
     brand: { type: String, default: 'acervinox' },
+    category: { type: String, default: '', trim: true },
+    price: { type: Number, default: 0, min: 0 },
     steelType: { type: String, default: '' },
     gauge: { type: String, default: '' },
     specs: { type: [String], default: [] },

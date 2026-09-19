@@ -4,7 +4,7 @@ import { Product } from '../models/Product.js'
 import { requireAuth, requireRole } from '../middleware/auth.js'
 
 export const clientsRouter = Router()
-clientsRouter.use(requireAuth, requireRole('admin', 'workshop'))
+clientsRouter.use(requireAuth, requireRole('admin', 'workshop', 'maintenance'))
 
 function fail(err, res, fallback) {
   console.error(err)

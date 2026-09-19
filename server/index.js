@@ -4,7 +4,9 @@ import cors from 'cors'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { connectDb } from './db.js'
-import { seedAdmin, seedWorkshop } from './seed.js'
+import { seedAdmin, seedWorkshop, seedMaintenance } from './seed.js'
+import { seedCostItems } from './lib/seedCosts.js'
+import { seedCatalogProducts } from './lib/seedCatalog.js'
 import { authRouter } from './routes/auth.js'
 import { leadsRouter } from './routes/leads.js'
 import { clientsRouter } from './routes/clients.js'
@@ -16,6 +18,9 @@ import { portalRouter } from './routes/portal.js'
 import { visitsRouter } from './routes/visits.js'
 import { paymentsRouter } from './routes/payments.js'
 import { accountingRouter } from './routes/accounting.js'
+import { cutsRouter } from './routes/cuts.js'
+import { costsRouter } from './routes/costs.js'
+import { mttoRouter } from './routes/mtto.js'
 import { pushRouter } from './routes/push.js'
 import { corsOrigin } from './lib/corsOrigins.js'
 
@@ -51,6 +56,9 @@ app.use('/api/portal', portalRouter)
 app.use('/api/visits', visitsRouter)
 app.use('/api/payments', paymentsRouter)
 app.use('/api/accounting', accountingRouter)
+app.use('/api/cuts', cutsRouter)
+app.use('/api/costs', costsRouter)
+app.use('/api/mtto', mttoRouter)
 app.use('/api/push', pushRouter)
 
 const dist = path.join(__dirname, '..', 'dist')
@@ -69,6 +77,9 @@ try {
   await connectDb()
   await seedAdmin()
   await seedWorkshop()
+  await seedMaintenance()
+  await seedCostItems()
+  await seedCatalogProducts()
   app.listen(PORT, () => {
     console.log(`acervinox listo en puerto ${PORT}`)
   })

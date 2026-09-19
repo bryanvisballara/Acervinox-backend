@@ -9,7 +9,7 @@ import { addPayment, ledger, money, PAY_METHODS } from '../lib/accounting.js'
 import { notifyProductAudience } from '../lib/push.js'
 
 export const productsRouter = Router()
-productsRouter.use(requireAuth, requireRole('admin', 'workshop'))
+productsRouter.use(requireAuth, requireRole('admin', 'workshop', 'maintenance'))
 
 function nextTracking() {
   const n = Date.now().toString().slice(-8)
@@ -26,7 +26,7 @@ function serialize(product, role) {
     stage,
     client: obj.client,
   }
-  if (role !== 'workshop') {
+  if (role !== 'workshop' && role !== 'maintenance') {
     out.totalAmount = totalAmount
     out.payments = payments
     out.accounting = ledger(obj)
@@ -70,36 +70,41 @@ productsRouter.post('/', requireRole('admin'), async (req, res) => {
       ? req.body.productIds.map(String)
       : []
     if (!clientId) return res.status(400).json({ error: 'Selecciona un cliente' })
-    if (!productIds.length) {
-      return res.status(400).json({ error: 'Selecciona al menos un producto del catálogo' })
-    }
     const client = await Client.findById(clientId)
     if (!client) return res.status(404).json({ error: 'Cliente no encontrado' })
 
-    const catalog = await CatalogProduct.find({ _id: { $in: productIds } })
-    if (!catalog.length) {
-      return res.status(400).json({
-        error: 'No se encontraron los productos seleccionados. Créalos en Productos.',
-      })
+    const customName = String(req.body.name || '').trim()
+    let items = []
+    if (productIds.length) {
+      const catalog = await CatalogProduct.find({ _id: { $in: productIds } })
+      if (!catalog.length) {
+        return res.status(400).json({
+          error: 'No se encontraron los productos seleccionados. Créalos en Productos.',
+        })
+      }
+      const byId = new Map(catalog.map((p) => [String(p._id), p]))
+      items = productIds
+        .map((id) => byId.get(id))
+        .filter(Boolean)
+        .map((p) => ({
+          catalogProduct: p._id,
+          name: p.name,
+          origin: p.origin,
+          brand: p.brand,
+          steelType: p.steelType || '',
+          gauge: p.gauge || '',
+          image: p.image || '',
+          specs: p.specs || [],
+          qty: 1,
+        }))
+    } else if (customName) {
+      items = [{ name: customName }]
+    } else {
+      return res.status(400).json({ error: 'Escribe el nombre del trabajo' })
     }
-    const byId = new Map(catalog.map((p) => [String(p._id), p]))
-    const items = productIds
-      .map((id) => byId.get(id))
-      .filter(Boolean)
-      .map((p) => ({
-        catalogProduct: p._id,
-        name: p.name,
-        origin: p.origin,
-        brand: p.brand,
-        steelType: p.steelType || '',
-        gauge: p.gauge || '',
-        image: p.image || '',
-        specs: p.specs || [],
-        qty: 1,
-      }))
 
     const stage = STAGES[0]
-    const name = items.map((item) => item.name).join(' + ')
+    const name = customName || items.map((item) => item.name).join(' + ')
     const product = await Product.create({
       tracking: nextTracking(),
       name,

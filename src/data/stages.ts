@@ -40,5 +40,6 @@ export const MEASURE_UNITS = [
 export function portalPath(role?: string) {
   if (role === 'admin') return '/admin'
   if (role === 'workshop') return '/workshop'
+  if (role === 'maintenance') return '/mtto'
   return '/portal'
 }

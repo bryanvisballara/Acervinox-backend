@@ -1,11 +1,12 @@
-import { FileDown, Mail, Plus, Save, Trash2 } from 'lucide-react'
+import { FileDown, ImagePlus, Mail, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ClientModal, type AdminClient } from '../../components/ClientModal'
 import { NumberField } from '../../components/NumberField'
+import { emptyMedidaItem, QuoteCustomFlow, type QuoteCustomItem } from '../../components/QuoteCustomFlow'
 import { CLIENT_TYPES, DOC_TYPES, IVA } from '../../data/stages'
 import { api, openPrintHtml, openPrintWindow } from '../../lib/api'
-import { cop, partAmount, unitLabel } from '../../lib/image'
+import { compressImage, cop, partAmount, unitLabel } from '../../lib/image'
 
 type Part = {
   _id: string
@@ -22,6 +23,8 @@ type CatalogProduct = {
   name: string
   origin: 'nacional' | 'importado'
   brand: string
+  category?: string
+  price?: number
   steelType?: string
   gauge?: string
   specs?: string[]
@@ -50,13 +53,21 @@ type QuotePart = {
 }
 
 type QuoteItem = {
+  _id?: string
   name: string
   origin: 'nacional' | 'importado'
   brand: string
   image: string
+  description?: string
   specs: string[]
   steelType: string
   gauge: string
+  kind?: 'catalog' | 'medida'
+  cutPlanId?: string
+  jobCostId?: string
+  sheetsUsed?: number
+  costTotal?: number
+  priceChoice?: QuoteCustomItem['priceChoice']
   parts: QuotePart[]
 }
 
@@ -66,18 +77,34 @@ function fromCatalog(product: CatalogProduct): QuoteItem {
     origin: product.origin,
     brand: product.brand || 'acervinox',
     image: product.image || '',
+    description: (product.specs || []).join('\n'),
     specs: product.specs || [],
     steelType: product.steelType || '',
     gauge: product.gauge || '',
-    parts: (product.parts || []).map((p) => ({
-      partId: String(p.part || ''),
-      name: p.name,
-      qty: p.qty || 1,
-      unitPrice: p.unitPrice,
-      pricing: p.pricing === 'medida' ? 'medida' : 'estandar',
-      unit: p.unit || 'm',
-      measure: p.measure || (p.pricing === 'medida' ? 1 : 0),
-    })),
+    kind: 'catalog',
+    parts: (product.parts || []).length
+      ? (product.parts || []).map((p) => ({
+          partId: String(p.part || ''),
+          name: p.name,
+          qty: p.qty || 1,
+          unitPrice: p.unitPrice,
+          pricing: p.pricing === 'medida' ? 'medida' : 'estandar',
+          unit: p.unit || 'm',
+          measure: p.measure || (p.pricing === 'medida' ? 1 : 0),
+        }))
+      : product.price
+        ? [
+            {
+              partId: '',
+              name: 'Equipo',
+              qty: 1,
+              unitPrice: product.price,
+              pricing: 'estandar' as const,
+              unit: 'und',
+              measure: 0,
+            },
+          ]
+        : [],
   }
 }
 
@@ -100,37 +127,111 @@ function itemNet(item: QuoteItem) {
   return item.parts.reduce((sum, p) => sum + partAmount(p), 0)
 }
 
+function QuoteItemPhoto({
+  image,
+  onChange,
+}: {
+  image: string
+  onChange: (image: string) => void
+}) {
+  return (
+    <div className="quote-photo">
+      {image ? <img src={image} alt="" className="quote-thumb" /> : <div className="quote-thumb is-empty">Sin foto</div>}
+      <div className="flex flex-wrap gap-2">
+        <label className="btn btn-ghost">
+          <ImagePlus size={16} />
+          {image ? 'Cambiar foto' : 'Agregar foto'}
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (file) onChange(await compressImage(file))
+              e.currentTarget.value = ''
+            }}
+          />
+        </label>
+        {image ? (
+          <button type="button" className="btn btn-ghost" onClick={() => onChange('')}>
+            Quitar
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 function AddProductsBar({
   catalog,
-  pick,
-  onPick,
   onAdd,
   onBlank,
 }: {
   catalog: CatalogProduct[]
-  pick: string
-  onPick: (id: string) => void
-  onAdd: () => void
+  onAdd: (id: string) => void
   onBlank: () => void
 }) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const matches = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return catalog.filter((p) => {
+      if (!needle) return true
+      return `${p.name} ${p.category || ''} ${p.brand || ''} ${p.origin}`.toLowerCase().includes(needle)
+    })
+  }, [catalog, query])
+
+  const choose = (id: string) => {
+    onAdd(id)
+    setQuery('')
+    setOpen(false)
+  }
+
   return (
     <div className="quote-add">
-      <label className="min-w-0 flex-1">
+      <label className="cost-pick min-w-0 flex-1">
         Producto del catálogo
-        <select className="field" value={pick} onChange={(e) => onPick(e.target.value)}>
-          <option value="">Selecciona un producto</option>
-          {catalog.map((p) => (
-            <option key={p._id} value={p._id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        <input
+          className="field"
+          placeholder="Escribe para filtrar: estufa, asador, UNOX…"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setOpen(true)
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => window.setTimeout(() => setOpen(false), 180)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && matches[0]) {
+              e.preventDefault()
+              choose(matches[0]._id)
+            }
+            if (e.key === 'Escape') setOpen(false)
+          }}
+        />
+        {open && (
+          <ul className="cost-pick-list">
+            {matches.length === 0 ? (
+              <li className="is-empty">{query ? `No hay producto con “${query}”` : 'No hay productos en el catálogo.'}</li>
+            ) : (
+              matches.slice(0, 40).map((p, i) => (
+                <li key={p._id}>
+                  <button type="button" className={i === 0 ? 'is-first' : ''} onMouseDown={(e) => e.preventDefault()} onClick={() => choose(p._id)}>
+                    <strong>{p.name}</strong>
+                    <span>
+                      {p.origin === 'importado' ? 'Importado' : 'Nacional'}
+                      {p.category ? ` · ${p.category}` : ''}
+                      {p.price ? ` · ${cop(p.price)}` : ''}
+                    </span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        )}
       </label>
-      <button type="button" className="btn btn-red" disabled={!pick} onClick={onAdd}>
-        <Plus size={16} /> Añadir producto
-      </button>
       <button type="button" className="btn btn-ghost" onClick={onBlank}>
-        <Plus size={16} /> Producto desde piezas
+        <Plus size={16} /> Producto a la medida
       </button>
     </div>
   )
@@ -146,6 +247,7 @@ export function CotizadorPage() {
   const [savedId, setSavedId] = useState('')
   const [savedNumber, setSavedNumber] = useState('')
   const [clientModal, setClientModal] = useState(false)
+  const [editingCustom, setEditingCustom] = useState<number | null>(null)
 
   const [clientId, setClientId] = useState('')
   const [clientName, setClientName] = useState('')
@@ -154,34 +256,32 @@ export function CotizadorPage() {
   const [clientType, setClientType] = useState('')
   const [clientDocType, setClientDocType] = useState('')
   const [clientDocNumber, setClientDocNumber] = useState('')
-  const [catalogPick, setCatalogPick] = useState('')
+  const [orderName, setOrderName] = useState('')
+  const [orderId, setOrderId] = useState('')
+  const [orderTracking, setOrderTracking] = useState('')
   const [items, setItems] = useState<QuoteItem[]>([])
 
   const addCatalog = (id: string) => {
     const product = catalog.find((p) => p._id === id)
     if (!product) return
     setItems((prev) => [...prev, fromCatalog(product)])
-    setCatalogPick('')
     setOk('')
     setError('')
   }
 
-  const addBlank = () => {
-    setItems((prev) => [
-      ...prev,
-      {
-        name: `Producto ${prev.length + 1}`,
-        origin: 'nacional',
-        brand: 'acervinox',
-        image: '',
-        specs: [],
-        steelType: '',
-        gauge: '',
-        parts: [],
-      },
-    ])
-    setOk('')
+  const addCustom = async () => {
     setError('')
+    setOk('')
+    setBusy(true)
+    try {
+      const nextItems = [...items, emptyMedidaItem(items.length ? `Producto a la medida ${items.length + 1}` : 'Producto a la medida')]
+      const quote = await persist(nextItems)
+      setEditingCustom(quote.items.length - 1)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const load = async () => {
@@ -219,9 +319,10 @@ export function CotizadorPage() {
     setClientId(id)
     const client = clients.find((c) => c._id === id)
     if (client) fillClient(client)
+    if (id && orderName.trim()) attachOrder(id, orderName)
   }
 
-  const payload = () => ({
+  const payload = (list = items) => ({
     clientId: clientId || undefined,
     clientName,
     clientEmail,
@@ -229,24 +330,64 @@ export function CotizadorPage() {
     clientType,
     clientDocType,
     clientDocNumber,
-    items: items.map((item) => ({
+    orderName: orderName.trim(),
+    items: list.map((item) => ({
       ...item,
-      name: item.name.trim() || 'Producto',
+      name: item.name.trim() || (item.kind === 'medida' ? 'Producto a la medida' : 'Producto'),
+      kind: item.kind === 'medida' ? 'medida' : 'catalog',
     })),
   })
 
-  const persist = async () => {
-    if (!items.length) throw new Error('Añade al menos un producto del catálogo')
-    const body = JSON.stringify(payload())
+  const applyQuote = (quote: {
+    _id: string
+    number: string
+    items: QuoteItem[]
+    orderName?: string
+    order?: { _id: string; name: string; tracking: string } | null
+  }) => {
+    setSavedId(quote._id)
+    setSavedNumber(quote.number)
+    setItems(quote.items || [])
+    if (quote.orderName) setOrderName(quote.orderName)
+    if (quote.order?._id) {
+      setOrderId(quote.order._id)
+      setOrderTracking(quote.order.tracking)
+    }
+    return quote
+  }
+
+  const persist = async (list = items, extra: Record<string, unknown> = {}) => {
+    if (!list.length && !String(extra.orderName ?? orderName).trim()) {
+      throw new Error('Añade un producto o el nombre del pedido')
+    }
+    const body = JSON.stringify({ ...payload(list), ...extra })
     if (savedId) {
       const data = await api(`/api/quotes/quotations/${savedId}`, { method: 'PUT', body })
-      setSavedNumber(data.quotation.number)
-      return data.quotation
+      return applyQuote(data.quotation)
     }
     const data = await api('/api/quotes/quotations', { method: 'POST', body })
-    setSavedId(data.quotation._id)
-    setSavedNumber(data.quotation.number)
-    return data.quotation
+    return applyQuote(data.quotation)
+  }
+
+  const attachOrder = async (nextClient = clientId, nextName = orderName) => {
+    const name = nextName.trim()
+    if (!name) return
+    if (!nextClient) {
+      setError('Elige el cliente para abrir el pedido')
+      return
+    }
+    setError('')
+    setBusy(true)
+    try {
+      const quote = await persist(items, { clientId: nextClient, orderName: name })
+      if (quote.order?.tracking) {
+        setOk(`Pedido ${quote.order.tracking} ya está en Pedidos.`)
+      }
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const saveQuote = async () => {
@@ -304,12 +445,8 @@ export function CotizadorPage() {
       <p className="admin-kicker">Ventas</p>
       <h1 className="font-display text-4xl font-bold">Cotizador</h1>
       <p className="mt-2 max-w-2xl text-steel">
-        Elige un cliente, suma productos ya creados y genera el PDF o el correo. Las piezas se
-        arman en{' '}
-        <Link to="/admin/productos" className="font-semibold text-brand">
-          Productos
-        </Link>
-        .
+        Elige el cliente, ponle nombre al pedido y arma la cotización. El pedido entra enseguida
+        a Pedidos; los del catálogo se suman de una y los a la medida se cortan y costean acá.
       </p>
 
       {error && <p className="mt-4 text-sm text-brand">{error}</p>}
@@ -323,8 +460,13 @@ export function CotizadorPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {savedNumber && <span className="quote-number">{savedNumber}</span>}
+            {orderTracking && (
+              <Link to={`/admin/pedidos/${orderId}`} className="btn btn-ghost">
+                Pedido {orderTracking}
+              </Link>
+            )}
             <button type="button" className="btn btn-ghost" onClick={() => setClientModal(true)}>
-              <Plus size={16} /> Crear cliente
+              <Plus size={16} /> Crear cliente / pedido
             </button>
           </div>
         </div>
@@ -388,7 +530,27 @@ export function CotizadorPage() {
               ))}
             </select>
           </label>
+          <label className="quote-span-2">
+            Nombre del pedido
+            <input
+              className="field"
+              value={orderName}
+              placeholder="Mueble cafetería, remodelación cocina…"
+              onChange={(e) => setOrderName(e.target.value)}
+              onBlur={() => {
+                if (orderName.trim()) attachOrder()
+              }}
+            />
+          </label>
         </div>
+        {orderTracking ? (
+          <p className="mt-3 text-sm text-steel">
+            Ya está en Pedidos como <strong>{orderTracking}</strong>
+            {orderName ? ` · ${orderName}` : ''}.
+          </p>
+        ) : (
+          <p className="mt-3 text-sm text-steel">Elige el cliente y el nombre. En cuanto lo pongas, el pedido aparece en Pedidos.</p>
+        )}
       </section>
 
       <section className="admin-card">
@@ -396,22 +558,33 @@ export function CotizadorPage() {
           <div>
             <h2>Productos de la cotización</h2>
             <p>
-              Puedes sumar varios productos. En cada uno elige si las piezas van estándar o por
-              medida. Ejemplo: cubierta a $420.000/m × 1.35 m.
+              Los del catálogo ya tienen precio. Un producto a la medida pasa por cortes, costos y
+              el precio de venta, sin salir de la cotización.
             </p>
           </div>
-          <Link to="/admin/productos" className="btn btn-ghost">
-            <Plus size={16} /> Crear pieza o producto
-          </Link>
         </div>
 
-        <AddProductsBar
-          catalog={catalog}
-          pick={catalogPick}
-          onPick={setCatalogPick}
-          onAdd={() => addCatalog(catalogPick)}
-          onBlank={addBlank}
-        />
+        {editingCustom !== null && items[editingCustom]?.kind === 'medida' ? (
+          <QuoteCustomFlow
+            item={items[editingCustom] as QuoteCustomItem}
+            clientId={clientId}
+            clientName={clientName}
+            quoteId={savedId}
+            productId={orderId}
+            onChange={(next) =>
+              setItems((prev) => prev.map((row, i) => (i === editingCustom ? { ...row, ...next } : row)))
+            }
+            onDone={(next) => {
+              const list = next
+                ? items.map((row, i) => (i === editingCustom ? { ...row, ...next } : row))
+                : items
+              persist(list).catch((err) => setError(err.message))
+              setEditingCustom(null)
+            }}
+          />
+        ) : (
+          <>
+        <AddProductsBar catalog={catalog} onAdd={addCatalog} onBlank={addCustom} />
 
         {items.length === 0 && (
           <p className="mt-4 text-sm text-steel">Aún no hay productos en esta cotización.</p>
@@ -431,20 +604,57 @@ export function CotizadorPage() {
                   }
                 />
                 <p className="mt-1 text-sm text-steel">
-                  {item.origin === 'importado' ? 'Importado' : 'Fabricación nacional'}
-                  {item.steelType ? ` · ${item.steelType}` : ''}
-                  {item.gauge ? ` · ${item.gauge}` : ''}
+                  {item.kind === 'medida'
+                    ? 'A la medida'
+                    : item.origin === 'importado'
+                      ? 'Importado'
+                      : 'Fabricación nacional'}
+                  {item.kind === 'medida' && item.sheetsUsed ? ` · ${item.sheetsUsed} láminas` : ''}
+                  {item.kind !== 'medida' && item.steelType ? ` · ${item.steelType}` : ''}
+                  {item.kind !== 'medida' && item.gauge ? ` · ${item.gauge}` : ''}
                 </p>
               </div>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
-              >
-                <Trash2 size={16} /> Quitar
-              </button>
+              <div className="flex flex-wrap gap-2">
+                {item.kind === 'medida' && (
+                  <button type="button" className="btn btn-ghost" onClick={() => setEditingCustom(index)}>
+                    Cortar y costear
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
+                >
+                  <Trash2 size={16} /> Quitar
+                </button>
+              </div>
             </div>
-            {item.image && <img src={item.image} alt="" className="quote-thumb" />}
+            <QuoteItemPhoto
+              image={item.image || ''}
+              onChange={(image) => setItems((prev) => prev.map((row, i) => (i === index ? { ...row, image } : row)))}
+            />
+            <label className="quote-desc">
+              Descripción
+              <textarea
+                className="field"
+                rows={5}
+                value={item.description || ''}
+                placeholder="Servicio, materiales, medidas, acabados… lo que debe verse en la cotización."
+                onChange={(e) =>
+                  setItems((prev) => prev.map((row, i) => (i === index ? { ...row, description: e.target.value } : row)))
+                }
+              />
+            </label>
+            {item.kind === 'medida' ? (
+              <p className="mt-3 text-right text-sm text-steel">
+                {item.costTotal ? `Costo ${cop(item.costTotal)} · ` : ''}
+                Neto {cop(itemNet(item))} · IVA 19% {cop(Math.round(itemNet(item) * IVA))} ·{' '}
+                <strong className="text-brand">
+                  {cop(itemNet(item) + Math.round(itemNet(item) * IVA))}
+                </strong>
+              </p>
+            ) : (
+            <>
             <div className="table-wrap mt-4">
               <table className="admin-table">
                 <thead>
@@ -577,19 +787,17 @@ export function CotizadorPage() {
                 {cop(itemNet(item) + Math.round(itemNet(item) * IVA))}
               </strong>
             </p>
+            </>
+            )}
           </article>
         ))}
 
         {items.length > 0 && (
           <div className="mt-6 border-t border-[var(--color-line)] pt-5">
-            <AddProductsBar
-              catalog={catalog}
-              pick={catalogPick}
-              onPick={setCatalogPick}
-              onAdd={() => addCatalog(catalogPick)}
-              onBlank={addBlank}
-            />
+            <AddProductsBar catalog={catalog} onAdd={addCatalog} onBlank={addCustom} />
           </div>
+        )}
+          </>
         )}
       </section>
 
@@ -615,10 +823,16 @@ export function CotizadorPage() {
 
       <ClientModal
         open={clientModal}
+        withOrder
+        orderName={orderName}
         onClose={() => setClientModal(false)}
-        onCreated={(client) => {
+        onCreated={(client, extra) => {
           setClients((prev) => [client, ...prev.filter((c) => c._id !== client._id)])
           fillClient(client)
+          if (extra?.orderName) {
+            setOrderName(extra.orderName)
+            attachOrder(client._id, extra.orderName)
+          }
         }}
       />
     </div>

@@ -8,11 +8,19 @@ import { RegisterPage } from './pages/RegisterPage'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
 import { AdminLayout } from './pages/admin/AdminLayout'
 import { AccountingPage } from './pages/admin/AccountingPage'
+import { CuttingPage } from './pages/admin/CuttingPage'
+import { CostsPage } from './pages/admin/CostsPage'
 import { CatalogPage } from './pages/admin/CatalogPage'
 import { ClientsPage } from './pages/admin/ClientsPage'
 import { CotizadorPage } from './pages/admin/CotizadorPage'
 import { FunnelPage } from './pages/admin/FunnelPage'
 import { MaintenancesPage } from './pages/admin/MaintenancesPage'
+import { MaterialRequestsPage } from './pages/admin/MaterialRequestsPage'
+import { MttoLayout } from './pages/mtto/MttoLayout'
+import { MttoAppointmentsPage } from './pages/mtto/MttoAppointmentsPage'
+import { MttoActaPage } from './pages/mtto/MttoActaPage'
+import { MttoActasPage } from './pages/mtto/MttoActasPage'
+import { MttoMaterialsPage } from './pages/mtto/MttoMaterialsPage'
 import { OrdersPage } from './pages/admin/OrdersPage'
 import { ProductDetailPage } from './pages/admin/ProductDetailPage'
 import { StageOrdersPage } from './pages/admin/StageOrdersPage'
@@ -61,7 +69,24 @@ export default function App() {
           <Route path="pedidos" element={<OrdersPage />} />
           <Route path="clientes" element={<ClientsPage />} />
           <Route path="contabilidad" element={<AccountingPage />} />
+          <Route path="cortes" element={<CuttingPage />} />
+          <Route path="costos" element={<CostsPage />} />
           <Route path="mantenimientos" element={<MaintenancesPage />} />
+          <Route path="solicitudes-materiales" element={<MaterialRequestsPage />} />
+        </Route>
+        <Route
+          path="/mtto"
+          element={
+            <RequireAuth roles={['admin', 'maintenance']}>
+              <MttoLayout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<MttoAppointmentsPage />} />
+          <Route path="actas" element={<MttoActasPage />} />
+          <Route path="actas/nueva" element={<MttoActaPage />} />
+          <Route path="actas/:id" element={<MttoActaPage />} />
+          <Route path="materiales" element={<MttoMaterialsPage />} />
         </Route>
         <Route
           path="/workshop"
@@ -74,7 +99,7 @@ export default function App() {
           <Route index element={<AdminDashboard />} />
           <Route path="etapas/:stageId" element={<StageOrdersPage />} />
           <Route path="pedidos/:id" element={<ProductDetailPage />} />
-          <Route path="mantenimientos" element={<MaintenancesPage />} />
+          <Route path="cortes" element={<CuttingPage />} />
         </Route>
         <Route path="/portal" element={<ClientLayout />}>
           <Route index element={<ClientPortal />} />

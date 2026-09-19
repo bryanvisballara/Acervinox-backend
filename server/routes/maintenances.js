@@ -1,9 +1,18 @@
 import { Router } from 'express'
+import { Client } from '../models/Client.js'
 import { Maintenance } from '../models/Maintenance.js'
+import { Product } from '../models/Product.js'
 import { requireAuth, requireRole } from '../middleware/auth.js'
 
 export const maintenancesRouter = Router()
-maintenancesRouter.use(requireAuth, requireRole('admin', 'workshop'))
+maintenancesRouter.use(requireAuth, requireRole('admin', 'maintenance'))
+
+function populateMaint() {
+  return [
+    { path: 'product', populate: { path: 'client' } },
+    { path: 'client' },
+  ]
+}
 
 maintenancesRouter.get('/', async (req, res) => {
   try {
@@ -12,8 +21,7 @@ maintenancesRouter.get('/', async (req, res) => {
     const filter = {}
     if (status) filter.status = status
     const items = await Maintenance.find(filter)
-      .populate({ path: 'product', populate: { path: 'client' } })
-      .populate('client')
+      .populate(populateMaint())
       .sort({ scheduledAt: 1 })
       .limit(300)
 
@@ -28,6 +36,38 @@ maintenancesRouter.get('/', async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'No se pudieron cargar los mantenimientos' })
+  }
+})
+
+maintenancesRouter.post('/', async (req, res) => {
+  try {
+    const clientId = String(req.body.client || '').trim()
+    const productId = String(req.body.product || '').trim()
+    const months = Number(req.body.intervalMonths)
+    const at = req.body.scheduledAt ? new Date(req.body.scheduledAt) : new Date()
+    if (!clientId) return res.status(400).json({ error: 'Elige el cliente para programar la próxima visita' })
+    if (!months || months < 1) return res.status(400).json({ error: 'Indica en cuántos meses vuelve' })
+    if (Number.isNaN(at.getTime())) return res.status(400).json({ error: 'Fecha inválida' })
+    const client = await Client.findById(clientId)
+    if (!client) return res.status(404).json({ error: 'Cliente no encontrado' })
+    if (productId) {
+      const product = await Product.findById(productId)
+      if (!product) return res.status(404).json({ error: 'Pedido no encontrado' })
+    }
+    const item = await Maintenance.create({
+      client: client._id,
+      product: productId || undefined,
+      intervalMonths: Math.round(months),
+      scheduledAt: at,
+      status: 'scheduled',
+      notes: String(req.body.notes || '').trim().slice(0, 400),
+      followUp: 'rescheduled',
+    })
+    const populated = await item.populate(populateMaint())
+    res.status(201).json({ maintenance: populated })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'No se pudo programar el próximo mantenimiento' })
   }
 })
 
@@ -46,10 +86,7 @@ maintenancesRouter.patch('/:id', async (req, res) => {
     }
     if (req.body.notes !== undefined) item.notes = String(req.body.notes || '').trim()
     await item.save()
-    const populated = await item.populate([
-      { path: 'product', populate: { path: 'client' } },
-      { path: 'client' },
-    ])
+    const populated = await item.populate(populateMaint())
     res.json({ maintenance: populated })
   } catch (err) {
     console.error(err)

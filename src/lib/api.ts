@@ -85,3 +85,25 @@ export async function openPrintHtml(path: string, preview?: Window | null) {
   }
   window.setTimeout(() => URL.revokeObjectURL(url), 120000)
 }
+
+export function openPrintDocument(html: string, title = 'acervinox') {
+  const printable = html.includes('</body>')
+    ? html.replace(
+        '</body>',
+        `<script>
+          window.addEventListener('load', function () {
+            setTimeout(function () { window.focus(); window.print(); }, 250);
+          });
+        </script></body>`,
+      )
+    : html
+  const blob = new Blob([printable], { type: 'text/html;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const target = window.open(url, title)
+  if (!target) {
+    URL.revokeObjectURL(url)
+    throw new Error('Permite ventanas emergentes para generar el PDF')
+  }
+  target.focus()
+  window.setTimeout(() => URL.revokeObjectURL(url), 120000)
+}

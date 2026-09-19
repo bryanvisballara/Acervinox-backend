@@ -1,4 +1,4 @@
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { Modal } from '../../components/Modal'
 import { NumberField } from '../../components/NumberField'
@@ -23,6 +23,8 @@ type CatalogProduct = {
   name: string
   origin: 'nacional' | 'importado'
   brand: string
+  category?: string
+  price?: number
   steelType?: string
   gauge?: string
   specs?: string[]
@@ -44,16 +46,14 @@ type SelectedPart = { part: Part; qty: number; pricing: 'estandar' | 'medida'; m
 export function CatalogPage() {
   const [tab, setTab] = useState<Tab>('parts')
   const [parts, setParts] = useState<Part[]>([])
-  const [catalog, setCatalog] = useState<CatalogProduct[]>([])
   const [error, setError] = useState('')
   const [ok, setOk] = useState('')
   const [partsForm, setPartsForm] = useState(0)
   const [catalogForm, setCatalogForm] = useState(0)
 
   const load = async () => {
-    const [p, c] = await Promise.all([api('/api/quotes/parts'), api('/api/quotes/catalog')])
+    const p = await api('/api/quotes/parts')
     setParts(p.parts)
-    setCatalog(c.products)
   }
 
   useEffect(() => {
@@ -125,7 +125,6 @@ export function CatalogPage() {
         <CatalogPanel
           key={catalogForm}
           parts={parts}
-          catalog={catalog}
           onChange={load}
           onError={setError}
           onOk={setOk}
@@ -353,20 +352,24 @@ function PartsPanel({
 
 function CatalogPanel({
   parts,
-  catalog,
   onChange,
   onError,
   onOk,
 }: {
   parts: Part[]
-  catalog: CatalogProduct[]
   onChange: () => Promise<void>
   onError: (msg: string) => void
   onOk: (msg: string) => void
 }) {
+  const [catalog, setCatalog] = useState<CatalogProduct[]>([])
+  const [page, setPage] = useState(1)
+  const [pages, setPages] = useState(1)
+  const [total, setTotal] = useState(0)
   const [editing, setEditing] = useState<CatalogProduct | null>(null)
   const [name, setName] = useState('')
   const [origin, setOrigin] = useState<'nacional' | 'importado'>('nacional')
+  const [category, setCategory] = useState('')
+  const [price, setPrice] = useState(0)
   const [steelType, setSteelType] = useState('')
   const [gauge, setGauge] = useState('')
   const [image, setImage] = useState('')
@@ -374,10 +377,30 @@ function CatalogPanel({
   const [removing, setRemoving] = useState<CatalogProduct | null>(null)
   const [busy, setBusy] = useState(false)
 
+  const loadCatalog = async (nextPage = page) => {
+    const data = await api(`/api/quotes/catalog?page=${nextPage}&limit=20`)
+    const nextPages = data.pages || 1
+    const safePage = Math.min(data.page || nextPage, nextPages)
+    setCatalog(data.products || [])
+    setTotal(data.total || 0)
+    setPages(nextPages)
+    setPage(safePage)
+    if (safePage !== (data.page || nextPage) && safePage !== nextPage) {
+      const again = await api(`/api/quotes/catalog?page=${safePage}&limit=20`)
+      setCatalog(again.products || [])
+    }
+  }
+
+  useEffect(() => {
+    loadCatalog(1).catch((err) => onError(err.message))
+  }, [])
+
   const clearForm = () => {
     setEditing(null)
     setName('')
     setOrigin('nacional')
+    setCategory('')
+    setPrice(0)
     setSteelType('')
     setGauge('')
     setImage('')
@@ -388,6 +411,8 @@ function CatalogPanel({
     setEditing(product)
     setName(product.name)
     setOrigin(product.origin)
+    setCategory(product.category || '')
+    setPrice(product.price || 0)
     setSteelType(product.steelType || '')
     setGauge(product.gauge || '')
     setImage(product.image || '')
@@ -427,6 +452,8 @@ function CatalogPanel({
       name,
       origin,
       brand: editing?.brand || 'acervinox',
+      category,
+      price,
       steelType,
       gauge,
       image,
@@ -479,7 +506,7 @@ function CatalogPanel({
       <div className="admin-card-head">
         <div>
           <h2>{editing ? 'Editar producto' : 'Crear producto'}</h2>
-          <p>Arma el producto con las piezas. Luego lo eliges al cotizar o al crear un pedido.</p>
+          <p>Los del listado de precios no llevan piezas: solo nombre, origen y valor. Si quieres, después le pegas piezas.</p>
         </div>
       </div>
       <form className="grid gap-4" onSubmit={submit}>
@@ -500,6 +527,14 @@ function CatalogPanel({
               <option value="nacional">Fabricación nacional</option>
               <option value="importado">Importado</option>
             </select>
+          </label>
+          <label>
+            Línea
+            <input className="field" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Estufas, hornos…" />
+          </label>
+          <label>
+            Precio (sin IVA)
+            <NumberField className="field" value={price} onChange={setPrice} />
           </label>
           <label>
             Acero
@@ -611,8 +646,9 @@ function CatalogPanel({
           <thead>
             <tr>
               <th>Producto</th>
+              <th>Línea</th>
               <th>Origen</th>
-              <th>Acero</th>
+              <th>Precio</th>
               <th>Piezas</th>
               <th />
             </tr>
@@ -620,16 +656,17 @@ function CatalogPanel({
           <tbody>
             {catalog.length === 0 ? (
               <tr>
-                <td colSpan={5} className="empty">
-                  No hay productos. Crea las piezas y luego ármalos aquí.
+                <td colSpan={6} className="empty">
+                  No hay productos en el catálogo.
                 </td>
               </tr>
             ) : (
               catalog.map((p) => (
                 <tr key={p._id}>
                   <td>{p.name}</td>
+                  <td>{p.category || '—'}</td>
                   <td>{p.origin === 'importado' ? 'Importado' : 'Nacional'}</td>
-                  <td>{[p.steelType, p.gauge].filter(Boolean).join(' · ') || '—'}</td>
+                  <td>{p.price ? cop(p.price) : '—'}</td>
                   <td>{p.parts.length}</td>
                   <td>
                     <div className="flex flex-wrap gap-2">

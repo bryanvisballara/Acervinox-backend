@@ -2,11 +2,14 @@ import {
   Boxes,
   Calculator,
   CalendarClock,
+  CircleDollarSign,
   ClipboardList,
   Filter,
   Layers,
   Menu,
   Package,
+  PackagePlus,
+  Scissors,
   Users,
   Wallet,
   Wrench,
@@ -26,7 +29,10 @@ const links = [
   { to: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList, end: true },
   { to: '/admin/clientes', label: 'Clientes', icon: Users, end: false },
   { to: '/admin/contabilidad', label: 'Contabilidad', icon: Wallet, end: false },
+  { to: '/admin/cortes', label: 'Cortes de lámina', icon: Scissors, end: false },
+  { to: '/admin/costos', label: 'Costos', icon: CircleDollarSign, end: false },
   { to: '/admin/mantenimientos', label: 'Mantenimientos', icon: CalendarClock, end: false },
+  { to: '/admin/solicitudes-materiales', label: 'Solicitudes materiales', icon: PackagePlus, end: false },
 ]
 
 export function AdminLayout() {
@@ -86,6 +92,10 @@ export function AdminLayout() {
           <NavLink to="/workshop" className="admin-link" onClick={close}>
             <Wrench size={16} />
             Workshop
+          </NavLink>
+          <NavLink to="/mtto" className="admin-link" onClick={close}>
+            <CalendarClock size={16} />
+            Portal mantenimientos
           </NavLink>
           <NavLink to="/portal" className="admin-link" onClick={close}>
             <Package size={16} />

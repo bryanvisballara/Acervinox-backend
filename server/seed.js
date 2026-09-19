@@ -52,3 +52,29 @@ export async function seedWorkshop() {
   })
   console.log('Usuario workshop creado:', email)
 }
+
+export async function seedMaintenance() {
+  const email = process.env.SEED_MAINT_EMAIL?.toLowerCase().trim()
+  const password = process.env.SEED_MAINT_PASSWORD
+  if (!email || !password) return
+
+  const exists = await User.findOne({ email })
+  if (exists) {
+    if (!exists.emailVerified || exists.role !== 'maintenance') {
+      exists.emailVerified = true
+      exists.role = 'maintenance'
+      await exists.save()
+    }
+    return
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12)
+  await User.create({
+    email,
+    passwordHash,
+    name: 'Mantenimientos acervinox',
+    role: 'maintenance',
+    emailVerified: true,
+  })
+  console.log('Usuario mantenimientos creado:', email)
+}

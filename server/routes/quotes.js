@@ -5,7 +5,8 @@ import { Quotation } from '../models/Quotation.js'
 import { requireAuth, requireRole } from '../middleware/auth.js'
 import { calcQuote } from '../lib/quoteMath.js'
 import { quotationHtml } from '../lib/quotationHtml.js'
-import { createOrderFromQuote } from '../lib/createOrderFromQuote.js'
+import { createOrderFromQuote, ensureOrderFromQuote, quoteOrderName } from '../lib/createOrderFromQuote.js'
+import { Product } from '../models/Product.js'
 import { FUNNEL_STAGES, FUNNEL_LOST } from '../config/stages.js'
 
 export const quotesRouter = Router()
@@ -78,8 +79,21 @@ quotesRouter.delete('/parts/:id', async (req, res) => {
   }
 })
 
-quotesRouter.get('/catalog', async (_req, res) => {
-  const products = await CatalogProduct.find().sort({ name: 1 })
+quotesRouter.get('/catalog', async (req, res) => {
+  const sort = { origin: -1, category: 1, name: 1 }
+  const page = Math.max(0, Math.floor(Number(req.query.page) || 0))
+  const limit = Math.min(50, Math.max(1, Math.floor(Number(req.query.limit) || 20)))
+  if (page) {
+    const total = await CatalogProduct.countDocuments()
+    const pages = Math.max(1, Math.ceil(total / limit))
+    const safePage = Math.min(page, pages)
+    const products = await CatalogProduct.find()
+      .sort(sort)
+      .skip((safePage - 1) * limit)
+      .limit(limit)
+    return res.json({ products, total, page: safePage, pages, limit })
+  }
+  const products = await CatalogProduct.find().sort(sort)
   res.json({ products })
 })
 
@@ -91,6 +105,8 @@ quotesRouter.post('/catalog', async (req, res) => {
       name,
       origin: req.body.origin === 'importado' ? 'importado' : 'nacional',
       brand: String(req.body.brand || 'acervinox'),
+      category: String(req.body.category || ''),
+      price: Number(req.body.price) || 0,
       steelType: String(req.body.steelType || ''),
       gauge: String(req.body.gauge || ''),
       specs: Array.isArray(req.body.specs) ? req.body.specs : [],
@@ -113,6 +129,8 @@ quotesRouter.patch('/catalog/:id', async (req, res) => {
     product.name = name
     product.origin = req.body.origin === 'importado' ? 'importado' : 'nacional'
     product.brand = String(req.body.brand || 'acervinox')
+    product.category = String(req.body.category || '')
+    product.price = Number(req.body.price) || 0
     product.steelType = String(req.body.steelType || '')
     product.gauge = String(req.body.gauge || '')
     product.specs = Array.isArray(req.body.specs) ? req.body.specs : product.specs
@@ -162,10 +180,29 @@ quotesRouter.get('/quotations', async (req, res) => {
   res.json({ quotations, counts, stages: FUNNEL_STAGES, lost: FUNNEL_LOST })
 })
 
+async function withOrder(quote) {
+  const obj = quote.toObject()
+  if (!obj.orderId) {
+    obj.order = null
+    return obj
+  }
+  const order = await Product.findById(obj.orderId).select('name tracking')
+  obj.order = order ? { _id: String(order._id), name: order.name, tracking: order.tracking } : null
+  return obj
+}
+
+async function syncQuoteOrder(quote, user) {
+  if (!quote.clientId || !quoteOrderName(quote)) return null
+  const product = await ensureOrderFromQuote(quote, user)
+  quote.orderId = product._id
+  await quote.save()
+  return product
+}
+
 quotesRouter.get('/quotations/:id', async (req, res) => {
   const quote = await Quotation.findById(req.params.id)
   if (!quote) return res.status(404).json({ error: 'Cotización no encontrada' })
-  res.json({ quotation: quote })
+  res.json({ quotation: await withOrder(quote) })
 })
 
 quotesRouter.post('/quotations', async (req, res) => {
@@ -184,13 +221,22 @@ quotesRouter.post('/quotations', async (req, res) => {
       clientId: req.body.clientId || undefined,
       clientType: req.body.clientType || '',
       notes: String(req.body.notes || ''),
+      orderName: String(req.body.orderName || '').trim(),
       funnelStage: 'cotizacion',
       ...priced,
     })
-    res.status(201).json({ quotation: quote })
+    try {
+      await syncQuoteOrder(quote, req.user)
+    } catch (err) {
+      if (err.status && err.status < 500) {
+        return res.status(err.status).json({ error: err.message, quotation: await withOrder(quote) })
+      }
+      throw err
+    }
+    res.status(201).json({ quotation: await withOrder(quote) })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ error: 'No se pudo guardar la cotización' })
+    res.status(err.status || 500).json({ error: err.message || 'No se pudo guardar la cotización' })
   }
 })
 
@@ -239,15 +285,24 @@ quotesRouter.put('/quotations/:id', async (req, res) => {
     if (req.body.clientId) quote.clientId = req.body.clientId
     quote.clientType = req.body.clientType ?? quote.clientType
     quote.notes = String(req.body.notes ?? quote.notes)
+    if (req.body.orderName != null) quote.orderName = String(req.body.orderName).trim()
     quote.items = priced.items
     quote.subtotal = priced.subtotal
     quote.iva = priced.iva
     quote.total = priced.total
     await quote.save()
-    res.json({ quotation: quote })
+    try {
+      await syncQuoteOrder(quote, req.user)
+    } catch (err) {
+      if (err.status && err.status < 500) {
+        return res.status(err.status).json({ error: err.message, quotation: await withOrder(quote) })
+      }
+      throw err
+    }
+    res.json({ quotation: await withOrder(quote) })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ error: 'No se pudo actualizar la cotización' })
+    res.status(err.status || 500).json({ error: err.message || 'No se pudo actualizar la cotización' })
   }
 })
 

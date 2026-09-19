@@ -21,12 +21,16 @@ export function ClientModal({
   onClose,
   onCreated,
   onUpdated,
+  withOrder,
+  orderName,
 }: {
   open: boolean
   client?: AdminClient | null
   onClose: () => void
-  onCreated?: (client: AdminClient) => void
+  onCreated?: (client: AdminClient, extra?: { orderName?: string }) => void
   onUpdated?: (client: AdminClient) => void
+  withOrder?: boolean
+  orderName?: string
 }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -81,7 +85,8 @@ export function ClientModal({
           method: 'POST',
           body: JSON.stringify(payload),
         })
-        onCreated?.(data.client)
+        const createdOrderName = withOrder ? String(form.get('orderName') || '').trim() : ''
+        onCreated?.(data.client, createdOrderName ? { orderName: createdOrderName } : undefined)
         setCreated(data.client)
       }
     } catch (err: any) {
@@ -94,7 +99,17 @@ export function ClientModal({
   return (
     <Modal
       open={open}
-      title={created ? 'Cliente creado' : editing ? 'Editar cliente' : 'Nuevo cliente'}
+      title={
+        created
+          ? withOrder
+            ? 'Cliente y pedido creados'
+            : 'Cliente creado'
+          : editing
+            ? 'Editar cliente'
+            : withOrder
+              ? 'Nuevo cliente / pedido'
+              : 'Nuevo cliente'
+      }
       onClose={close}
     >
       {created ? (
@@ -104,8 +119,9 @@ export function ClientModal({
             <div>
               <p className="font-display text-xl font-bold">{created.name}</p>
               <p className="mt-1 text-sm text-steel">
-                Se guardó correctamente. Ya lo puedes ver y usar en la sección{' '}
-                <strong>Clientes</strong>.
+                {withOrder
+                  ? 'Se guardó el cliente y el pedido ya aparece en Pedidos.'
+                  : 'Se guardó correctamente. Ya lo puedes ver y usar en la sección Clientes.'}
               </p>
               {created.email && <p className="mt-2 text-sm text-steel">{created.email}</p>}
             </div>
@@ -171,9 +187,21 @@ export function ClientModal({
               ))}
             </select>
           </label>
+          {withOrder && (
+            <label className="grid gap-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-steel">
+              Nombre del pedido
+              <input
+                className="field"
+                name="orderName"
+                required
+                defaultValue={orderName || ''}
+                placeholder="Mueble cafetería, remodelación cocina…"
+              />
+            </label>
+          )}
           {error && <p className="text-sm text-brand">{error}</p>}
           <button type="submit" className="btn btn-red" disabled={busy}>
-            {busy ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar cliente'}
+            {busy ? 'Guardando…' : editing ? 'Guardar cambios' : withOrder ? 'Guardar cliente y pedido' : 'Guardar cliente'}
           </button>
         </form>
       )}

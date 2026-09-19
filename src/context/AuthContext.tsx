@@ -6,7 +6,7 @@ export type AuthUser = {
   email: string
   name: string
   phone?: string
-  role: 'admin' | 'workshop' | 'client'
+  role: 'admin' | 'workshop' | 'maintenance' | 'client'
 }
 
 type AuthContextValue = {

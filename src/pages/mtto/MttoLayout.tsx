@@ -1,25 +1,26 @@
-import { Layers, Menu, Scissors, Shield, X } from 'lucide-react'
+import { CalendarClock, ClipboardPen, FileText, Menu, PackagePlus, Shield, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { initPush } from '../../lib/pushClient'
 
 const links = [
-  { to: '/workshop', label: 'Etapas de fabricación', icon: Layers, end: true },
-  { to: '/workshop/cortes', label: 'Cortes de lámina', icon: Scissors, end: false },
+  { to: '/mtto', label: 'Citas', icon: CalendarClock, end: true },
+  { to: '/mtto/actas/nueva', label: 'Nueva acta', icon: ClipboardPen, end: false },
+  { to: '/mtto/actas', label: 'Actas', icon: FileText, end: true },
+  { to: '/mtto/materiales', label: 'Solicitar materiales', icon: PackagePlus, end: false },
 ]
 
-export function WorkshopLayout() {
+export function MttoLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
     if (user) initPush()
   }, [user])
 
-  const initials = (user?.name || 'WS')
+  const initials = (user?.name || 'MT')
     .split(' ')
     .map((p) => p[0])
     .join('')
@@ -40,44 +41,32 @@ export function WorkshopLayout() {
           <img src="/logo-acervinox.png" alt="acervinox" />
         </div>
         <nav className="admin-nav">
-          <p className="admin-nav-label">Taller</p>
+          <p className="admin-nav-label">Mantenimientos</p>
           {links.map((l) => (
             <NavLink
               key={l.to}
               to={l.to}
               end={l.end}
-              className={({ isActive }) => {
-                if (l.to === '/workshop') {
-                  const path = location.pathname
-                  const onFabrication =
-                    path === '/workshop' ||
-                    path.startsWith('/workshop/etapas') ||
-                    /^\/workshop\/pedidos\/[^/]+/.test(path)
-                  return `admin-link ${onFabrication ? 'is-active' : ''}`
-                }
-                return `admin-link ${isActive ? 'is-active' : ''}`
-              }}
+              className={({ isActive }) => `admin-link ${isActive ? 'is-active' : ''}`}
               onClick={close}
             >
               <l.icon size={16} />
               {l.label}
             </NavLink>
           ))}
+          <p className="admin-nav-label">Portales</p>
           {user?.role === 'admin' && (
-            <>
-              <p className="admin-nav-label">Portales</p>
-              <NavLink to="/admin" className="admin-link" onClick={close}>
-                <Shield size={16} />
-                Administrativo
-              </NavLink>
-            </>
+            <NavLink to="/admin" className="admin-link" onClick={close}>
+              <Shield size={16} />
+              Administrativo
+            </NavLink>
           )}
         </nav>
         <div className="admin-sidebar-foot">
           <button type="button" className="admin-user-card" onClick={signOut} title="Cerrar sesión">
             <b className="admin-avatar">{initials}</b>
             <span className="admin-user-meta">
-              <strong>{user?.name || 'Taller'}</strong>
+              <strong>{user?.name || 'Técnico'}</strong>
               <span>Cerrar sesión</span>
             </span>
           </button>

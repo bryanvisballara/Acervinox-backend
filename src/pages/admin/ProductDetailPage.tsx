@@ -20,12 +20,21 @@ export function ProductDetailPage() {
   const [months, setMonths] = useState(6)
   const [custom, setCustom] = useState('')
   const [reportStage, setReportStage] = useState(0)
+  const [jobCosts, setJobCosts] = useState<any[]>([])
 
   const load = async (syncStage = false) => {
     const data = await api(`/api/products/${id}`)
     setProduct(data.product)
     setMaintenances(data.maintenances || [])
     if (syncStage) setReportStage(data.product.stageIndex || 0)
+    if (!workshop) {
+      try {
+        const costs = await api(`/api/costs/jobs?product=${id}`)
+        setJobCosts(costs.jobs || [])
+      } catch {
+        setJobCosts([])
+      }
+    }
   }
 
   useEffect(() => {
@@ -157,6 +166,38 @@ export function ProductDetailPage() {
           )}
         </section>
       </div>
+
+      {!workshop && (
+        <section className="admin-card" id="costos">
+          <div className="admin-card-head">
+            <div>
+              <p className="admin-kicker">Pedido</p>
+              <h2>Costo de materia prima</h2>
+            </div>
+            <a className="btn btn-ghost" href={`/admin/costos?product=${product._id}`}>
+              {jobCosts.length ? 'Ver / editar' : 'Armar costo'}
+            </a>
+          </div>
+          {jobCosts.length === 0 ? (
+            <p className="text-sm text-steel">
+              Todavía no hay un costo colgado en este pedido. Ármalo con la lista de precios.
+            </p>
+          ) : (
+            <ul className="mt-2 grid gap-2 text-sm">
+              {jobCosts.map((job) => (
+                <li key={job._id}>
+                  <a className="font-semibold text-brand" href={`/admin/costos?job=${job._id}`}>
+                    {job.number} · {job.name || 'Costo'}
+                  </a>
+                  <span className="ml-2 text-steel">
+                    MP {cop(job.materialTotal)} · fabricación {cop(job.laborTotal)} · total {cop(job.total)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {!workshop && (
         <section className="admin-card" id="contabilidad">

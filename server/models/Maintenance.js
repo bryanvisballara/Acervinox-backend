@@ -2,7 +2,7 @@ import mongoose from 'mongoose'
 
 const maintenanceSchema = new mongoose.Schema(
   {
-    product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+    product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
     client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
     intervalMonths: { type: Number, required: true },
     scheduledAt: { type: Date, required: true },

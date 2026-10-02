@@ -47,20 +47,10 @@ ErrorDocument 403 /index.html
 </IfModule>
 `
 
-const legacyPathRedirect = `<script>
-(function () {
-  var path = window.location.pathname || '/';
-  if (path === '/' || path === '/index.html') return;
-  if (/\\.[a-z0-9]{2,8}$/i.test(path)) return;
-  if (window.location.hash && window.location.hash.length > 1) return;
-  window.location.replace('/#' + path + window.location.search);
-})();
-</script>`
-
 const build = spawnSync('npx', ['vite', 'build'], {
   cwd: root,
   stdio: 'inherit',
-  env: { ...process.env, VITE_API_URL: api, VITE_HASH_ROUTER: '1' },
+  env: { ...process.env, VITE_API_URL: api },
 })
 
 if (build.status !== 0) process.exit(build.status ?? 1)
@@ -70,11 +60,7 @@ await mkdir(host, { recursive: true })
 await cp(dist, host, { recursive: true })
 
 const indexPath = path.join(host, 'index.html')
-let indexHtml = await readFile(indexPath, 'utf8')
-if (!indexHtml.includes('window.location.pathname')) {
-  indexHtml = indexHtml.replace('</head>', `${legacyPathRedirect}\n</head>`)
-}
-await writeFile(indexPath, indexHtml)
+const indexHtml = await readFile(indexPath, 'utf8')
 await writeFile(path.join(host, '404.html'), indexHtml)
 await writeFile(path.join(host, '.htaccess'), htaccess)
 await writeFile(
@@ -84,7 +70,7 @@ await writeFile(
 
 console.log(`Listo: ${host}`)
 console.log('Sube TODO host/ a public_html (incluye .htaccess).')
-console.log('Hostinger usa rutas con # (ej. acervinox.com/#/admin/productos) para que F5 funcione.')
+console.log('Con .htaccess en public_html, F5 en /admin/productos mantiene la misma página.')
 console.log(`API del front: ${api}`)
 
 const zip = spawnSync('zip', ['-r', path.join(root, 'host.zip'), '.', '.htaccess'], {

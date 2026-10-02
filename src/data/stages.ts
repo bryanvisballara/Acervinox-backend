@@ -43,3 +43,11 @@ export function portalPath(role?: string) {
   if (role === 'maintenance') return '/mtto'
   return '/portal'
 }
+
+export function afterLoginPath(role?: string, from?: { pathname?: string; search?: string }) {
+  const path = from?.pathname
+  if (path && path !== '/login' && path !== '/') {
+    return `${path}${from?.search || ''}`
+  }
+  return portalPath(role)
+}

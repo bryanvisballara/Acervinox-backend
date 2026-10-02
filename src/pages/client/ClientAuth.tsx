@@ -3,12 +3,12 @@ import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CodeInput } from '../../components/CodeInput'
 import { useAuth } from '../../context/AuthContext'
-import { portalPath } from '../../data/stages'
+import { afterLoginPath } from '../../data/stages'
 import { api } from '../../lib/api'
 
 type Screen = 'login' | 'register' | 'verify' | 'forgot' | 'reset'
 
-export function ClientAuth() {
+export function ClientAuth({ redirectFrom }: { redirectFrom?: { pathname?: string; search?: string } }) {
   const { login, setSession } = useAuth()
   const navigate = useNavigate()
   const [screen, setScreen] = useState<Screen>('login')
@@ -34,7 +34,7 @@ export function ClientAuth() {
     setLoading(true)
     try {
       const user = await login(email, password)
-      navigate(portalPath(user.role), { replace: true })
+      navigate(afterLoginPath(user.role, redirectFrom), { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo entrar')
     } finally {
@@ -74,7 +74,7 @@ export function ClientAuth() {
         body: JSON.stringify({ email, code }),
       })
       setSession(data.token, data.user)
-      navigate(portalPath(data.user.role), { replace: true })
+      navigate(afterLoginPath(data.user.role, redirectFrom), { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo verificar')
     } finally {

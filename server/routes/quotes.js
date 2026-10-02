@@ -81,8 +81,9 @@ quotesRouter.delete('/parts/:id', async (req, res) => {
 
 quotesRouter.get('/catalog', async (req, res) => {
   const sort = { origin: -1, category: 1, name: 1 }
-  const page = Math.max(0, Math.floor(Number(req.query.page) || 0))
-  const limit = Math.min(50, Math.max(1, Math.floor(Number(req.query.limit) || 20)))
+  const limitRaw = req.query.limit
+  const paginated = limitRaw !== undefined && String(limitRaw).trim() !== ''
+  const limit = Math.min(50, Math.max(1, Math.floor(Number(limitRaw) || 20)))
   const q = String(req.query.q || '').trim()
   const filter = q
     ? {
@@ -93,7 +94,8 @@ quotesRouter.get('/catalog', async (req, res) => {
         ],
       }
     : {}
-  if (page) {
+  if (paginated) {
+    const page = Math.max(1, Math.floor(Number(req.query.page) || 1))
     const total = await CatalogProduct.countDocuments(filter)
     const pages = Math.max(1, Math.ceil(total / limit) || 1)
     const safePage = Math.min(page, pages)

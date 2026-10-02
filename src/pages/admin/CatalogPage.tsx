@@ -42,6 +42,56 @@ type CatalogProduct = {
 
 type Tab = 'parts' | 'catalog'
 type SelectedPart = { part: Part; qty: number; pricing: 'estandar' | 'medida'; measure: number }
+const CATALOG_PAGE_SIZE = 20
+
+function CatalogPager({
+  page,
+  pages,
+  total,
+  shown,
+  sticky,
+  onPrev,
+  onNext,
+}: {
+  page: number
+  pages: number
+  total: number
+  shown: number
+  sticky?: boolean
+  onPrev: () => void
+  onNext: () => void
+}) {
+  const from = shown ? (page - 1) * CATALOG_PAGE_SIZE + 1 : 0
+  const to = (page - 1) * CATALOG_PAGE_SIZE + shown
+  const canPrev = page > 1
+  const canNext = page < pages || (page >= pages && shown >= CATALOG_PAGE_SIZE)
+
+  if (total <= CATALOG_PAGE_SIZE && page <= 1 && !canNext) return null
+
+  return (
+    <div className={`catalog-pager${sticky ? ' is-sticky' : ''}`}>
+      <p className="catalog-pager-meta">
+        {shown ? (
+          <>
+            Mostrando {from}–{to}
+            {total > 0 ? ` de ${total}` : ''}
+            {pages > 1 ? ` · página ${page} de ${pages}` : ''}
+          </>
+        ) : (
+          'Sin resultados'
+        )}
+      </p>
+      <div className="catalog-pager-actions">
+        <button type="button" className="btn btn-ghost !px-4 !py-2" disabled={!canPrev} onClick={onPrev}>
+          <ChevronLeft size={16} /> Anterior
+        </button>
+        <button type="button" className="btn btn-ghost !px-4 !py-2" disabled={!canNext} onClick={onNext}>
+          Siguiente <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export function CatalogPage() {
   const [tab, setTab] = useState<Tab>('parts')
@@ -379,13 +429,27 @@ function CatalogPanel({
   const [busy, setBusy] = useState(false)
 
   const loadCatalog = async (nextPage = page, nextQuery = query) => {
-    const qs = new URLSearchParams({ page: String(nextPage), limit: '20' })
+    const qs = new URLSearchParams({ page: String(nextPage), limit: String(CATALOG_PAGE_SIZE) })
     if (nextQuery.trim()) qs.set('q', nextQuery.trim())
     const data = await api(`/api/quotes/catalog?${qs}`)
-    const nextPages = data.pages || 1
-    const safePage = Math.min(data.page || nextPage, nextPages)
-    setCatalog(data.products || [])
-    setTotal(data.total || 0)
+    const products = (data.products || []) as CatalogProduct[]
+    const limit = Number(data.limit) || CATALOG_PAGE_SIZE
+    const totalKnown = typeof data.total === 'number' && Number.isFinite(data.total)
+    const total = totalKnown ? data.total : products.length
+    let nextPages =
+      typeof data.pages === 'number' && data.pages > 0
+        ? data.pages
+        : totalKnown
+          ? Math.max(1, Math.ceil(data.total / limit))
+          : 1
+    if (totalKnown && data.total > limit) {
+      nextPages = Math.max(nextPages, Math.ceil(data.total / limit))
+    } else if (products.length >= limit) {
+      nextPages = Math.max(nextPages, nextPage + 1)
+    }
+    const safePage = Math.min(typeof data.page === 'number' ? data.page : nextPage, nextPages)
+    setCatalog(products)
+    setTotal(totalKnown ? data.total : (safePage - 1) * limit + products.length)
     setPages(nextPages)
     setPage(safePage)
   }
@@ -502,8 +566,113 @@ function CatalogPanel({
     }
   }
 
+  const goPage = (next: number) => {
+    loadCatalog(next).catch((err) => onError(err.message))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   return (
-    <section className="admin-card">
+    <>
+      <section className="admin-card">
+        <div className="admin-card-head">
+          <div>
+            <h2>Listado</h2>
+            <p>
+              {total > 0 ? (
+                <>
+                  {total} producto{total === 1 ? '' : 's'} en catálogo
+                  {query.trim() ? ` · filtro “${query.trim()}”` : ''}
+                </>
+              ) : (
+                'Catálogo de productos estándar (20 por página).'
+              )}
+            </p>
+          </div>
+          <div className="admin-filters">
+            <input
+              className="field"
+              placeholder="Buscar por nombre o línea"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  goPage(1)
+                }
+              }}
+            />
+            <button type="button" className="btn btn-ghost" onClick={() => goPage(1)}>
+              Buscar
+            </button>
+          </div>
+        </div>
+        <CatalogPager
+          page={page}
+          pages={pages}
+          total={total}
+          shown={catalog.length}
+          onPrev={() => goPage(page - 1)}
+          onNext={() => goPage(page + 1)}
+        />
+        <div className="table-wrap mt-4">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Línea</th>
+                <th>Origen</th>
+                <th>Precio</th>
+                <th>Piezas</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {catalog.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="empty">
+                    No hay productos en el catálogo.
+                  </td>
+                </tr>
+              ) : (
+                catalog.map((p) => (
+                  <tr key={p._id}>
+                    <td>{p.name}</td>
+                    <td>{p.category || '—'}</td>
+                    <td>{p.origin === 'importado' ? 'Importado' : 'Nacional'}</td>
+                    <td>{p.price ? cop(p.price) : '—'}</td>
+                    <td>{p.parts.length}</td>
+                    <td>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" className="btn btn-ghost !px-3 !py-2" onClick={() => startEdit(p)}>
+                          <Pencil size={14} /> Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost !px-3 !py-2 text-brand"
+                          onClick={() => setRemoving(p)}
+                        >
+                          <Trash2 size={14} /> Borrar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <CatalogPager
+          sticky
+          page={page}
+          pages={pages}
+          total={total}
+          shown={catalog.length}
+          onPrev={() => goPage(page - 1)}
+          onNext={() => goPage(page + 1)}
+        />
+      </section>
+
+      <section className="admin-card">
       <div className="admin-card-head">
         <div>
           <h2>{editing ? 'Editar producto' : 'Crear producto'}</h2>
@@ -642,103 +811,7 @@ function CatalogPanel({
           )}
         </div>
       </form>
-      <div className="admin-card-head mt-8">
-        <div>
-          <h2>Listado</h2>
-          <p>
-            {total} producto{total === 1 ? '' : 's'}
-            {query.trim() ? ` con “${query.trim()}”` : ''}
-            {pages > 1 ? ` · página ${page} de ${pages}` : ''}
-          </p>
-        </div>
-        <div className="admin-filters">
-          <input
-            className="field"
-            placeholder="Buscar por nombre o línea"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                loadCatalog(1).catch((err) => onError(err.message))
-              }
-            }}
-          />
-          <button type="button" className="btn btn-ghost" onClick={() => loadCatalog(1).catch((err) => onError(err.message))}>
-            Buscar
-          </button>
-        </div>
-      </div>
-      <div className="table-wrap mt-4">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Producto</th>
-              <th>Línea</th>
-              <th>Origen</th>
-              <th>Precio</th>
-              <th>Piezas</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {catalog.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="empty">
-                  No hay productos en el catálogo.
-                </td>
-              </tr>
-            ) : (
-              catalog.map((p) => (
-                <tr key={p._id}>
-                  <td>{p.name}</td>
-                  <td>{p.category || '—'}</td>
-                  <td>{p.origin === 'importado' ? 'Importado' : 'Nacional'}</td>
-                  <td>{p.price ? cop(p.price) : '—'}</td>
-                  <td>{p.parts.length}</td>
-                  <td>
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" className="btn btn-ghost !px-3 !py-2" onClick={() => startEdit(p)}>
-                        <Pencil size={14} /> Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost !px-3 !py-2 text-brand"
-                        onClick={() => setRemoving(p)}
-                      >
-                        <Trash2 size={14} /> Borrar
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-      {pages > 1 && (
-        <div className="catalog-pager">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={page <= 1}
-            onClick={() => loadCatalog(page - 1).catch((err) => onError(err.message))}
-          >
-            <ChevronLeft size={16} /> Anterior
-          </button>
-          <span className="text-sm text-steel">
-            Página {page} de {pages}
-          </span>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={page >= pages}
-            onClick={() => loadCatalog(page + 1).catch((err) => onError(err.message))}
-          >
-            Siguiente <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
+      </section>
       <ConfirmDelete
         open={Boolean(removing)}
         title="Borrar producto"
@@ -747,7 +820,7 @@ function CatalogPanel({
         onClose={() => setRemoving(null)}
         onConfirm={confirmDelete}
       />
-    </section>
+    </>
   )
 }
 

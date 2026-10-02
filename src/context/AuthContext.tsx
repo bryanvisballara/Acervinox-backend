@@ -18,6 +18,21 @@ type AuthContextValue = {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+const USER_KEY = 'acervinox_user'
+
+function readCachedUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY)
+    return raw ? (JSON.parse(raw) as AuthUser) : null
+  } catch {
+    return null
+  }
+}
+
+function writeCachedUser(next: AuthUser | null) {
+  if (next) localStorage.setItem(USER_KEY, JSON.stringify(next))
+  else localStorage.removeItem(USER_KEY)
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -26,12 +41,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = getToken()
     if (!token) {
+      writeCachedUser(null)
       setLoading(false)
       return
     }
+    setToken(token)
+    const cached = readCachedUser()
+    if (cached) setUser(cached)
     api('/api/auth/me')
-      .then((data) => setUser(data.user))
-      .catch(() => clearToken())
+      .then((data) => {
+        setUser(data.user)
+        writeCachedUser(data.user)
+      })
+      .catch((err: { status?: number }) => {
+        if (err?.status === 401) {
+          clearToken()
+          writeCachedUser(null)
+          setUser(null)
+        }
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -46,15 +74,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         setToken(data.token)
         setUser(data.user)
+        writeCachedUser(data.user)
         return data.user as AuthUser
       },
       logout() {
         clearToken()
+        writeCachedUser(null)
         setUser(null)
       },
       setSession(token, nextUser) {
         setToken(token)
         setUser(nextUser)
+        writeCachedUser(nextUser)
       },
     }),
     [user, loading],

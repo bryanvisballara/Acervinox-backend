@@ -8,30 +8,22 @@ const dist = path.join(root, 'dist')
 const host = path.join(root, 'host')
 const api = 'https://acervinox-backend.onrender.com'
 
-const build = spawnSync('npx', ['vite', 'build'], {
-  cwd: root,
-  stdio: 'inherit',
-  env: { ...process.env, VITE_API_URL: api },
-})
+const htaccess = `<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
 
-if (build.status !== 0) process.exit(build.status ?? 1)
+  RewriteCond %{HTTP_HOST} ^www\\.acervinox\\.com$ [NC]
+  RewriteRule ^(.*)$ https://acervinox.com/$1 [L,R=301]
 
-await rm(host, { recursive: true, force: true })
-await mkdir(host, { recursive: true })
-await cp(dist, host, { recursive: true })
+  RewriteRule ^index\\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ /index.html [L]
+</IfModule>
 
-await writeFile(
-  path.join(host, '.htaccess'),
-  `RewriteEngine On
-RewriteBase /
-
-RewriteCond %{HTTP_HOST} ^www\\.acervinox\\.com$ [NC]
-RewriteRule ^(.*)$ https://acervinox.com/$1 [L,R=301]
-
-RewriteRule ^index\\.html$ - [L]
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule . /index.html [L]
+DirectoryIndex index.html
+ErrorDocument 404 /index.html
+ErrorDocument 403 /index.html
 
 <IfModule mod_expires.c>
   ExpiresActive On
@@ -43,14 +35,28 @@ RewriteRule . /index.html [L]
   ExpiresByType image/jpeg "access plus 1 year"
   ExpiresByType image/webp "access plus 1 year"
 </IfModule>
-`,
-)
+`
+
+const build = spawnSync('npx', ['vite', 'build'], {
+  cwd: root,
+  stdio: 'inherit',
+  env: { ...process.env, VITE_API_URL: api },
+})
+
+if (build.status !== 0) process.exit(build.status ?? 1)
+
+await rm(host, { recursive: true, force: true })
+await mkdir(host, { recursive: true })
+await cp(dist, host, { recursive: true })
+await writeFile(path.join(host, '.htaccess'), htaccess)
+await cp(path.join(host, 'index.html'), path.join(host, '404.html'))
 
 console.log(`Listo: ${host}`)
 console.log('Sube el contenido de host/ a public_html en Hostinger.')
+console.log('Incluye el archivo oculto .htaccess; sin ese archivo recargar /admin/... da 404.')
 console.log(`API del front: ${api}`)
 
-const zip = spawnSync('zip', ['-r', path.join(root, 'host.zip'), '.'], {
+const zip = spawnSync('zip', ['-r', path.join(root, 'host.zip'), '.', '.htaccess'], {
   cwd: host,
   stdio: 'inherit',
 })

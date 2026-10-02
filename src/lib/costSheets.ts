@@ -93,7 +93,7 @@ export function costTotals(lines: CostLine[], resellerMarginPct = DEFAULT_RESELL
     materialTotal,
     laborTotal,
     total,
-    sale50: salePriceFromCost(total, DEFAULT_SALE_MARGIN_PCT),
+    sale50: resalePriceFromCost(total, DEFAULT_SALE_MARGIN_PCT),
     resellerMarginPct: margin,
     resaleMarkUp: resaleMarkUpLabel(margin),
     resale70: resalePriceFromCost(total, margin),

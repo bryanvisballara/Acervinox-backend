@@ -65,6 +65,7 @@ export function isOtherTab(id: string) {
   return id === 'otros' || id === 'inst_otros'
 }
 
+export const DEFAULT_SALE_MARGIN_PCT = 50
 export const DEFAULT_RESELLER_MARGIN_PCT = 30
 
 export function clampResellerMarginPct(value: number) {
@@ -92,7 +93,7 @@ export function costTotals(lines: CostLine[], resellerMarginPct = DEFAULT_RESELL
     materialTotal,
     laborTotal,
     total,
-    sale50: Math.round(total * 1.5),
+    sale50: salePriceFromCost(total, DEFAULT_SALE_MARGIN_PCT),
     resellerMarginPct: margin,
     resaleMarkUp: resaleMarkUpLabel(margin),
     resale70: resalePriceFromCost(total, margin),

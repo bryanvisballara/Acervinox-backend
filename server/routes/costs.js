@@ -63,7 +63,7 @@ function summarize(lines, resellerMarginPct) {
     materialTotal,
     laborTotal,
     total,
-    sale50: money(total * 1.5),
+    sale50: resalePriceFromCost(total, 50),
     resale70: resalePriceFromCost(total, margin),
     resellerMarginPct: margin,
   }

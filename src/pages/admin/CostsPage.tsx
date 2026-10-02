@@ -4,6 +4,11 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { NumberField } from '../../components/NumberField'
 import { api, openPrintDocument } from '../../lib/api'
 import { jobCostHtml } from '../../lib/costPrint'
+import {
+  clampResellerMarginPct,
+  costTotals as buildCostTotals,
+  DEFAULT_RESELLER_MARGIN_PCT,
+} from '../../lib/costSheets'
 import { cop } from '../../lib/image'
 
 type Category = { id: string; label: string }
@@ -39,6 +44,7 @@ type JobCost = {
   total: number
   sale50: number
   resale70: number
+  resellerMarginPct?: number
   updatedAt: string
 }
 type ClientRow = { _id: string; name: string }
@@ -163,6 +169,7 @@ export function CostsPage() {
   const [lines, setLines] = useState<CostLine[]>([])
   const [busy, setBusy] = useState(false)
   const [jobStarted, setJobStarted] = useState(false)
+  const [resellerMarginPct, setResellerMarginPct] = useState(DEFAULT_RESELLER_MARGIN_PCT)
 
   const loadItems = async () => {
     const data = await api('/api/costs/items')
@@ -231,12 +238,10 @@ export function CostsPage() {
   )
   const scopedLines = useMemo(() => lines.filter((l) => lineSection(l.category) === section), [lines, section])
 
-  const totals = useMemo(() => {
-    const materialTotal = scopedLines.filter((l) => !LABOR_CATS.includes(l.category)).reduce((s, l) => s + lineTotal(l), 0)
-    const laborTotal = scopedLines.filter((l) => LABOR_CATS.includes(l.category)).reduce((s, l) => s + lineTotal(l), 0)
-    const total = materialTotal + laborTotal
-    return { materialTotal, laborTotal, total, sale50: Math.round(total * 1.5), resale70: Math.round(total * 1.7) }
-  }, [scopedLines])
+  const totals = useMemo(
+    () => buildCostTotals(scopedLines, resellerMarginPct),
+    [scopedLines, resellerMarginPct],
+  )
 
   const goSection = (next: SectionId) => {
     setSection(next)
@@ -303,6 +308,7 @@ export function CostsPage() {
     setJobTab('total')
     setJobStarted(true)
     setTab('jobs')
+    setResellerMarginPct(clampResellerMarginPct(job.resellerMarginPct ?? DEFAULT_RESELLER_MARGIN_PCT))
   }
 
   const newJob = () => {
@@ -320,6 +326,7 @@ export function CostsPage() {
     setJobTab('acero')
     setJobStarted(false)
     setTab('jobs')
+    setResellerMarginPct(DEFAULT_RESELLER_MARGIN_PCT)
   }
 
   const startJob = async () => {
@@ -447,6 +454,7 @@ export function CostsPage() {
         product: draft.product || null,
         notes: draft.notes,
         lines: lines.map((l) => ({ ...l, total: lineTotal(l) })),
+        resellerMarginPct,
       }
       const data = editing
         ? await api(`/api/costs/jobs/${editing._id}`, { method: 'PATCH', body: JSON.stringify(body) })
@@ -955,11 +963,23 @@ export function CostsPage() {
                 </div>
                 {section === 'mp' && (
                   <div>
-                    <span>Reventa +70%</span>
+                    <span>Reventa +{totals.resaleMarkUp}%</span>
                     <strong>{cop(totals.resale70)}</strong>
                   </div>
                 )}
               </div>
+              {section === 'mp' && (
+                <label className="quote-reseller-margin mt-4">
+                  <span>% margen revendedor</span>
+                  <NumberField
+                    className="field"
+                    value={resellerMarginPct}
+                    placeholder="30"
+                    onChange={(n) => setResellerMarginPct(clampResellerMarginPct(n))}
+                  />
+                  <span className="quote-reseller-hint">Precio reventa = costo ÷ (1 − %÷100)</span>
+                </label>
+              )}
               {draft.product && (
                 <p className="mt-3 text-sm text-steel">
                   Este costo queda en el pedido.{' '}

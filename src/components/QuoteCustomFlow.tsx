@@ -8,7 +8,9 @@ import {
   COST_UNITS,
   catsOf,
   costLineTotal,
+  clampResellerMarginPct,
   costTotals,
+  DEFAULT_RESELLER_MARGIN_PCT,
   firstSheet,
   isOtherTab,
   lineSection,
@@ -57,6 +59,7 @@ export type QuoteCustomItem = {
   sheetsUsed?: number
   costTotal?: number
   priceChoice?: QuotePriceChoice
+  resellerMarginPct?: number
   parts: {
     partId: string
     name: string
@@ -78,6 +81,21 @@ type CutJob = {
 
 type Category = { id: string; label: string }
 type Step = 'cortes' | 'costos' | 'precio'
+
+function ResellerMarginInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  return (
+    <label className="quote-reseller-margin">
+      <span>% margen revendedor</span>
+      <NumberField
+        className="field"
+        value={value}
+        placeholder="30"
+        onChange={(n) => onChange(clampResellerMarginPct(n))}
+      />
+      <span className="quote-reseller-hint">Precio reventa = costo ÷ (1 − %÷100)</span>
+    </label>
+  )
+}
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`
@@ -188,6 +206,9 @@ export function QuoteCustomFlow({
 
   const [choice, setChoice] = useState<QuotePriceChoice>(item.priceChoice || 'sale50')
   const [customPrice, setCustomPrice] = useState(item.parts[0]?.unitPrice || 0)
+  const [resellerMarginPct, setResellerMarginPct] = useState(() =>
+    clampResellerMarginPct(item.resellerMarginPct ?? DEFAULT_RESELLER_MARGIN_PCT),
+  )
 
   useEffect(() => {
     api('/api/costs/items')
@@ -244,12 +265,15 @@ export function QuoteCustomFlow({
             price: l.price,
           })),
         )
+        if (job.resellerMarginPct != null) {
+          setResellerMarginPct(clampResellerMarginPct(job.resellerMarginPct))
+        }
       })
       .catch((err) => setError(err.message))
   }, [item.jobCostId])
 
   const designs = useMemo(() => (cutResult ? groupSheetDesigns(cutResult.sheets) : []), [cutResult])
-  const totals = useMemo(() => costTotals(lines), [lines])
+  const totals = useMemo(() => costTotals(lines, resellerMarginPct), [lines, resellerMarginPct])
   const currentSheets = useMemo(() => sheetsOf(section), [section])
   const linesOnTab = useMemo(() => {
     if (jobTab === 'total') return []
@@ -335,6 +359,7 @@ export function QuoteCustomFlow({
       quoteItemId: item._id || null,
       notes: cutResult ? `${cutResult.sheetsUsed} láminas · ${cutJob.materialName}` : '',
       lines: lines.map((l) => ({ ...l, total: costLineTotal(l) })),
+      resellerMarginPct,
     }
     const data = jobCostId
       ? await api(`/api/costs/jobs/${jobCostId}`, { method: 'PATCH', body: JSON.stringify(body) })
@@ -397,6 +422,7 @@ export function QuoteCustomFlow({
         ...item,
         costTotal: totals.total,
         priceChoice: choice,
+        resellerMarginPct: totals.resellerMarginPct,
         sheetsUsed: cutResult?.sheetsUsed ?? item.sheetsUsed ?? 0,
         parts: pricedParts(item.name, price),
       }
@@ -842,20 +868,23 @@ export function QuoteCustomFlow({
           )}
 
           {jobTab === 'total' && (
-            <div className="cost-totals mt-4">
-              <div>
-                <span>Costo</span>
-                <strong>{cop(totals.total)}</strong>
+            <>
+              <div className="cost-totals mt-4">
+                <div>
+                  <span>Costo</span>
+                  <strong>{cop(totals.total)}</strong>
+                </div>
+                <div>
+                  <span>Venta +50%</span>
+                  <strong>{cop(totals.sale50)}</strong>
+                </div>
+                <div>
+                  <span>Reventa +{totals.resaleMarkUp}%</span>
+                  <strong>{cop(totals.resale70)}</strong>
+                </div>
               </div>
-              <div>
-                <span>Venta +50%</span>
-                <strong>{cop(totals.sale50)}</strong>
-              </div>
-              <div>
-                <span>Reventa +70%</span>
-                <strong>{cop(totals.resale70)}</strong>
-              </div>
-            </div>
+              <ResellerMarginInput value={resellerMarginPct} onChange={setResellerMarginPct} />
+            </>
           )}
 
           <div className="flex flex-wrap gap-2 mt-5">
@@ -903,7 +932,7 @@ export function QuoteCustomFlow({
               <strong>{cop(totals.sale50)}</strong>
             </button>
             <button type="button" className={`quote-price-pick ${choice === 'resale70' ? 'is-on' : ''}`} onClick={() => setChoice('resale70')}>
-              <span>Reventa +70%</span>
+              <span>Reventa +{totals.resaleMarkUp}%</span>
               <strong>{cop(totals.resale70)}</strong>
             </button>
             <label className={`quote-price-pick ${choice === 'custom' ? 'is-on' : ''}`}>
@@ -918,6 +947,7 @@ export function QuoteCustomFlow({
               />
             </label>
           </div>
+          <ResellerMarginInput value={resellerMarginPct} onChange={setResellerMarginPct} />
           <p className="mt-4 text-sm text-steel">
             {cutResult ? `${cutResult.sheetsUsed} láminas · ` : ''}
             Costo {cop(totals.total)} · <strong className="text-brand">A cotizar {cop(price)}</strong>

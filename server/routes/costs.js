@@ -38,7 +38,19 @@ function lineTotal(line) {
   return money(qty(line.qty) * money(line.price))
 }
 
-function summarize(lines) {
+function clampResellerMarginPct(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return 30
+  return Math.min(99, Math.max(0, Math.round(n)))
+}
+
+function resalePriceFromCost(total, marginPct) {
+  const m = clampResellerMarginPct(marginPct) / 100
+  if (m >= 1) return money(total)
+  return money(total / (1 - m))
+}
+
+function summarize(lines, resellerMarginPct) {
   const materialTotal = lines
     .filter((l) => l.category !== 'fabricacion')
     .reduce((s, l) => s + money(l.total), 0)
@@ -46,12 +58,14 @@ function summarize(lines) {
     .filter((l) => l.category === 'fabricacion')
     .reduce((s, l) => s + money(l.total), 0)
   const total = materialTotal + laborTotal
+  const margin = clampResellerMarginPct(resellerMarginPct)
   return {
     materialTotal,
     laborTotal,
     total,
     sale50: money(total * 1.5),
-    resale70: money(total * 1.7),
+    resale70: resalePriceFromCost(total, margin),
+    resellerMarginPct: margin,
   }
 }
 
@@ -172,6 +186,7 @@ costsRouter.get('/jobs/:id', async (req, res) => {
 
 function jobPayload(req) {
   const lines = cleanLines(req.body.lines)
+  const resellerMarginPct = clampResellerMarginPct(req.body.resellerMarginPct)
   return {
     name: String(req.body.name || '').trim().slice(0, 120),
     client: req.body.client || null,
@@ -180,7 +195,7 @@ function jobPayload(req) {
     quoteItemId: req.body.quoteItemId || null,
     lines,
     notes: String(req.body.notes || '').trim().slice(0, 500),
-    ...summarize(lines),
+    ...summarize(lines, resellerMarginPct),
     by: req.user?.name || req.user?.email || '',
   }
 }

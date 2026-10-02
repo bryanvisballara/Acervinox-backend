@@ -43,10 +43,18 @@ export function jobCostHtml({
   clientName?: string
   orderLabel?: string
   groups: CostPrintGroup[]
-  totals: { materialTotal: number; laborTotal: number; total: number; sale50: number; resale70: number }
+  totals: {
+    materialTotal: number
+    laborTotal: number
+    total: number
+    sale50: number
+    resale70: number
+    resaleMarkUp?: number
+  }
   kind?: 'mp' | 'inst'
   origin?: string
 }) {
+  const resaleLabel = totals.resaleMarkUp ?? 70
   const title = name || (kind === 'inst' ? 'Costo de instalación' : 'Costo de trabajo')
   const code = number || 'Sin guardar'
   const headline = kind === 'inst' ? 'Costo de instalación' : 'Costo de trabajo'
@@ -62,7 +70,7 @@ export function jobCostHtml({
     <div><span>Fabricación</span><strong>${cop(totals.laborTotal)}</strong></div>
     <div><span>Costo de MP</span><strong>${cop(totals.total)}</strong></div>
     <div><span>Venta +50%</span><strong>${cop(totals.sale50)}</strong></div>
-    <div class="grand"><span>Reventa +70%</span><span>${cop(totals.resale70)}</span></div>`
+    <div class="grand"><span>Reventa +${resaleLabel}%</span><span>${cop(totals.resale70)}</span></div>`
   const blocks = groups
     .map((group) => {
       const sub = group.lines.reduce((s, l) => s + lineTotal(l), 0)

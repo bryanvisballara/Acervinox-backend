@@ -30,6 +30,7 @@ const jobCostSchema = new mongoose.Schema(
     total: { type: Number, default: 0 },
     sale50: { type: Number, default: 0 },
     resale70: { type: Number, default: 0 },
+    resellerMarginPct: { type: Number, default: 30, min: 0, max: 99 },
     by: { type: String, default: '' },
   },
   { timestamps: true },

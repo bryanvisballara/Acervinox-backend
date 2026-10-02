@@ -65,11 +65,38 @@ export function isOtherTab(id: string) {
   return id === 'otros' || id === 'inst_otros'
 }
 
-export function costTotals(lines: CostLine[]) {
+export const DEFAULT_RESELLER_MARGIN_PCT = 30
+
+export function clampResellerMarginPct(value: number) {
+  if (!Number.isFinite(value)) return DEFAULT_RESELLER_MARGIN_PCT
+  return Math.min(99, Math.max(0, Math.round(value)))
+}
+
+/** Etiqueta “+70%” cuando el margen del revendedor es 30%. */
+export function resaleMarkUpLabel(marginPct: number) {
+  return 100 - clampResellerMarginPct(marginPct)
+}
+
+export function resalePriceFromCost(total: number, marginPct = DEFAULT_RESELLER_MARGIN_PCT) {
+  const m = clampResellerMarginPct(marginPct) / 100
+  if (m >= 1) return Math.round(total)
+  return Math.round(total / (1 - m))
+}
+
+export function costTotals(lines: CostLine[], resellerMarginPct = DEFAULT_RESELLER_MARGIN_PCT) {
   const materialTotal = lines.filter((l) => !LABOR_CATS.includes(l.category)).reduce((s, l) => s + costLineTotal(l), 0)
   const laborTotal = lines.filter((l) => LABOR_CATS.includes(l.category)).reduce((s, l) => s + costLineTotal(l), 0)
   const total = materialTotal + laborTotal
-  return { materialTotal, laborTotal, total, sale50: Math.round(total * 1.5), resale70: Math.round(total * 1.7) }
+  const margin = clampResellerMarginPct(resellerMarginPct)
+  return {
+    materialTotal,
+    laborTotal,
+    total,
+    sale50: Math.round(total * 1.5),
+    resellerMarginPct: margin,
+    resaleMarkUp: resaleMarkUpLabel(margin),
+    resale70: resalePriceFromCost(total, margin),
+  }
 }
 
 export function newCostKey() {

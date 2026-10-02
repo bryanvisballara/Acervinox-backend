@@ -365,6 +365,7 @@ function CatalogPanel({
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
   const [total, setTotal] = useState(0)
+  const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<CatalogProduct | null>(null)
   const [name, setName] = useState('')
   const [origin, setOrigin] = useState<'nacional' | 'importado'>('nacional')
@@ -377,18 +378,16 @@ function CatalogPanel({
   const [removing, setRemoving] = useState<CatalogProduct | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const loadCatalog = async (nextPage = page) => {
-    const data = await api(`/api/quotes/catalog?page=${nextPage}&limit=20`)
+  const loadCatalog = async (nextPage = page, nextQuery = query) => {
+    const qs = new URLSearchParams({ page: String(nextPage), limit: '20' })
+    if (nextQuery.trim()) qs.set('q', nextQuery.trim())
+    const data = await api(`/api/quotes/catalog?${qs}`)
     const nextPages = data.pages || 1
     const safePage = Math.min(data.page || nextPage, nextPages)
     setCatalog(data.products || [])
     setTotal(data.total || 0)
     setPages(nextPages)
     setPage(safePage)
-    if (safePage !== (data.page || nextPage) && safePage !== nextPage) {
-      const again = await api(`/api/quotes/catalog?page=${safePage}&limit=20`)
-      setCatalog(again.products || [])
-    }
   }
 
   useEffect(() => {
@@ -480,6 +479,7 @@ function CatalogPanel({
       }
       clearForm()
       await onChange()
+      await loadCatalog(editing ? page : 1)
     } catch (err: any) {
       onError(err.message)
     }
@@ -494,6 +494,7 @@ function CatalogPanel({
       setRemoving(null)
       onOk('Producto borrado.')
       await onChange()
+      await loadCatalog(page)
     } catch (err: any) {
       onError(err.message)
     } finally {
@@ -641,7 +642,34 @@ function CatalogPanel({
           )}
         </div>
       </form>
-      <div className="table-wrap mt-6">
+      <div className="admin-card-head mt-8">
+        <div>
+          <h2>Listado</h2>
+          <p>
+            {total} producto{total === 1 ? '' : 's'}
+            {query.trim() ? ` con “${query.trim()}”` : ''}
+            {pages > 1 ? ` · página ${page} de ${pages}` : ''}
+          </p>
+        </div>
+        <div className="admin-filters">
+          <input
+            className="field"
+            placeholder="Buscar por nombre o línea"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                loadCatalog(1).catch((err) => onError(err.message))
+              }
+            }}
+          />
+          <button type="button" className="btn btn-ghost" onClick={() => loadCatalog(1).catch((err) => onError(err.message))}>
+            Buscar
+          </button>
+        </div>
+      </div>
+      <div className="table-wrap mt-4">
         <table className="admin-table">
           <thead>
             <tr>
@@ -688,6 +716,29 @@ function CatalogPanel({
           </tbody>
         </table>
       </div>
+      {pages > 1 && (
+        <div className="catalog-pager">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={page <= 1}
+            onClick={() => loadCatalog(page - 1).catch((err) => onError(err.message))}
+          >
+            <ChevronLeft size={16} /> Anterior
+          </button>
+          <span className="text-sm text-steel">
+            Página {page} de {pages}
+          </span>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={page >= pages}
+            onClick={() => loadCatalog(page + 1).catch((err) => onError(err.message))}
+          >
+            Siguiente <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
       <ConfirmDelete
         open={Boolean(removing)}
         title="Borrar producto"

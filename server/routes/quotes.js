@@ -83,17 +83,27 @@ quotesRouter.get('/catalog', async (req, res) => {
   const sort = { origin: -1, category: 1, name: 1 }
   const page = Math.max(0, Math.floor(Number(req.query.page) || 0))
   const limit = Math.min(50, Math.max(1, Math.floor(Number(req.query.limit) || 20)))
+  const q = String(req.query.q || '').trim()
+  const filter = q
+    ? {
+        $or: [
+          { name: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+          { category: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+          { brand: new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+        ],
+      }
+    : {}
   if (page) {
-    const total = await CatalogProduct.countDocuments()
-    const pages = Math.max(1, Math.ceil(total / limit))
+    const total = await CatalogProduct.countDocuments(filter)
+    const pages = Math.max(1, Math.ceil(total / limit) || 1)
     const safePage = Math.min(page, pages)
-    const products = await CatalogProduct.find()
+    const products = await CatalogProduct.find(filter)
       .sort(sort)
       .skip((safePage - 1) * limit)
       .limit(limit)
     return res.json({ products, total, page: safePage, pages, limit })
   }
-  const products = await CatalogProduct.find().sort(sort)
+  const products = await CatalogProduct.find(filter).sort(sort)
   res.json({ products })
 })
 

@@ -610,8 +610,8 @@ export function CotizadorPage() {
                       ? 'Importado'
                       : 'Fabricación nacional'}
                   {item.kind === 'medida' && item.sheetsUsed ? ` · ${item.sheetsUsed} láminas` : ''}
-                  {item.kind !== 'medida' && item.steelType ? ` · ${item.steelType}` : ''}
-                  {item.kind !== 'medida' && item.gauge ? ` · ${item.gauge}` : ''}
+                  {item.steelType ? ` · ${item.steelType}` : ''}
+                  {item.gauge ? ` · ${item.gauge}` : ''}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

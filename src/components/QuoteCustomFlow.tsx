@@ -34,6 +34,16 @@ import {
 } from '../lib/cutOptimizer'
 import { compressImage, cop } from '../lib/image'
 
+const STEEL_SHEET_CATEGORIES = ['acero_304', 'acero_430'] as const
+
+function steelMaterialLabel(item: { name: string; variant?: string }) {
+  return [item.name, item.variant].filter(Boolean).join(' · ')
+}
+
+function composeSheetMaterial(categoryLabel: string, item: { name: string; variant?: string }) {
+  return `${categoryLabel} · ${steelMaterialLabel(item)}`
+}
+
 const PRESETS = [
   { label: '1220 × 2440', length: 2440, width: 1220 },
   { label: '1000 × 2000', length: 2000, width: 1000 },
@@ -60,6 +70,8 @@ export type QuoteCustomItem = {
   costTotal?: number
   priceChoice?: QuotePriceChoice
   resellerMarginPct?: number
+  steelCategory?: string
+  steelItemId?: string
   parts: {
     partId: string
     name: string
@@ -209,6 +221,8 @@ export function QuoteCustomFlow({
   const [resellerMarginPct, setResellerMarginPct] = useState(() =>
     clampResellerMarginPct(item.resellerMarginPct ?? DEFAULT_RESELLER_MARGIN_PCT),
   )
+  const [steelCategory, setSteelCategory] = useState(item.steelCategory || '')
+  const [steelItemId, setSteelItemId] = useState(item.steelItemId || '')
 
   useEffect(() => {
     api('/api/costs/items')
@@ -238,6 +252,8 @@ export function QuoteCustomFlow({
         }
         setCutJob(next)
         setCutPlanId(plan._id)
+        if (plan.steelCategory) setSteelCategory(plan.steelCategory)
+        if (plan.steelItemId) setSteelItemId(String(plan.steelItemId))
         try {
           setCutResult(optimizeCuts(next.pieces.filter((p) => p.length && p.width && p.qty), next.stocks.filter((s) => s.length && s.width), { kerf: next.kerf }))
         } catch {
@@ -297,6 +313,78 @@ export function QuoteCustomFlow({
   }, [categories, costItems, jobTab, pickQuery])
   const price = salePrice(choice, totals, customPrice)
 
+  const steelCategoryOptions = useMemo(
+    () => categories.filter((c) => (STEEL_SHEET_CATEGORIES as readonly string[]).includes(c.id)),
+    [categories],
+  )
+  const steelMaterialOptions = useMemo(() => {
+    if (!steelCategory) return []
+    return costItems
+      .filter((it) => it.category === steelCategory)
+      .sort((a, b) => `${a.name}${a.variant}`.localeCompare(`${b.name}${b.variant}`, 'es'))
+  }, [costItems, steelCategory])
+
+  const sheetStockReady = cutJob.stocks.some((s) => s.length > 0 && s.width > 0)
+
+  const pickSteelCategory = (nextCategory: string) => {
+    setSteelCategory(nextCategory)
+    setSteelItemId('')
+    const label = categories.find((c) => c.id === nextCategory)?.label || ''
+    setCutJob((j) => applyMaterial(j, label || j.materialName))
+    updateItem({ steelCategory: nextCategory, steelItemId: '', steelType: label, gauge: '' })
+  }
+
+  const pickSteelMaterial = (nextItemId: string) => {
+    const catalog = costItems.find((it) => it._id === nextItemId)
+    const cat = categories.find((c) => c.id === steelCategory)
+    if (!catalog || !cat) return
+    setSteelItemId(nextItemId)
+    const materialName = composeSheetMaterial(cat.label, catalog)
+    const gauge = steelMaterialLabel(catalog)
+    setCutJob((j) => applyMaterial(j, materialName))
+    updateItem({
+      steelCategory,
+      steelItemId: nextItemId,
+      steelType: cat.label,
+      gauge,
+    })
+  }
+
+  const ensureSteelCostLine = () => {
+    if (!steelItemId || !cutResult?.sheetsUsed) return
+    const catalog = costItems.find((it) => it._id === steelItemId)
+    if (!catalog) return
+    const qty = cutResult.sheetsUsed
+    setLines((prev) => {
+      const hit = prev.find((l) => l.item === steelItemId)
+      if (hit) {
+        return prev.map((l) => (l.item === steelItemId ? { ...l, qty: Math.max(l.qty, qty), price: catalog.price } : l))
+      }
+      return [
+        ...prev,
+        {
+          key: newCostKey(),
+          item: catalog._id,
+          category: catalog.category,
+          name: catalog.name,
+          variant: catalog.variant,
+          unit: catalog.unit,
+          qty,
+          price: catalog.price,
+        },
+      ]
+    })
+    setSection('mp')
+    setJobTab('acero')
+  }
+
+  const requireSteelIfSheet = () => {
+    if (!sheetStockReady) return
+    if (!steelCategory || !steelItemId) {
+      throw new Error('Elige el tipo de acero y el material de la lámina.')
+    }
+  }
+
   const updateItem = (patch: Partial<QuoteCustomItem>) => {
     const next = { ...item, ...patch }
     if (patch.parts || patch.name || patch.priceChoice || patch.costTotal != null) {
@@ -314,6 +402,7 @@ export function QuoteCustomFlow({
       const stocks = nextJob.stocks.filter((s) => s.length > 0 && s.width > 0)
       if (!pieces.length) throw new Error('Agrega al menos un corte con largo, ancho y cantidad.')
       if (!stocks.length) throw new Error('Agrega al menos una lámina de stock.')
+      if (steelCategory && !steelItemId) throw new Error('Elige el material de acero para esa lámina.')
       const next = optimizeCuts(pieces, stocks, { kerf: nextJob.kerf })
       setCutResult(next)
       return next
@@ -331,6 +420,8 @@ export function QuoteCustomFlow({
     const body = {
       name: item.name || nextJob.jobName || 'Producto a la medida',
       materialName: nextJob.materialName,
+      steelCategory: steelCategory || undefined,
+      steelItemId: steelItemId || undefined,
       kerf: nextJob.kerf,
       pieces: nextJob.pieces,
       stocks: nextJob.stocks,
@@ -378,8 +469,10 @@ export function QuoteCustomFlow({
     setError('')
     setBusy(true)
     try {
+      requireSteelIfSheet()
       if (cutJob.pieces.some((p) => p.length > 0 && p.width > 0 && p.qty > 0)) {
         await saveCuts()
+        ensureSteelCostLine()
       }
       setStep('costos')
     } catch (err) {
@@ -423,6 +516,10 @@ export function QuoteCustomFlow({
         costTotal: totals.total,
         priceChoice: choice,
         resellerMarginPct: totals.resellerMarginPct,
+        steelCategory,
+        steelItemId,
+        steelType: item.steelType,
+        gauge: item.gauge,
         sheetsUsed: cutResult?.sheetsUsed ?? item.sheetsUsed ?? 0,
         parts: pricedParts(item.name, price),
       }
@@ -554,18 +651,6 @@ export function QuoteCustomFlow({
           <p className="text-sm text-steel">
             Si este producto lleva lámina, arma el despiece. Si no (solo tubo, accesorios o instalación), sáltalo.
           </p>
-          <div className="cut-job-fields mt-4">
-            <label>
-              Material de la lámina
-              <input
-                className="field"
-                value={cutJob.materialName}
-                placeholder="Acero inoxidable 304"
-                onChange={(e) => setCutJob((j) => applyMaterial(j, e.target.value))}
-              />
-            </label>
-          </div>
-
           <div className="admin-card-head mt-6">
             <div>
               <h2>Cortes que necesitas</h2>
@@ -664,6 +749,47 @@ export function QuoteCustomFlow({
               </tbody>
             </table>
           </div>
+
+          {sheetStockReady && (
+            <div className="cut-steel-pick mt-4">
+              <p className="text-sm text-steel mb-3">2. Elige el acero de la lista de costos (materia prima → Acero).</p>
+              <div className="quote-grid">
+                <label>
+                  Tipo de acero
+                  <select className="field" value={steelCategory} onChange={(e) => pickSteelCategory(e.target.value)}>
+                    <option value="">Selecciona 304 o 430…</option>
+                    {steelCategoryOptions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Material
+                  <select
+                    className="field"
+                    value={steelItemId}
+                    disabled={!steelCategory}
+                    onChange={(e) => pickSteelMaterial(e.target.value)}
+                  >
+                    <option value="">{steelCategory ? 'Calibre / formato…' : 'Primero el tipo de acero'}</option>
+                    {steelMaterialOptions.map((it) => (
+                      <option key={it._id} value={it._id}>
+                        {steelMaterialLabel(it)}
+                        {it.price ? ` · ${cop(it.price)}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {cutJob.materialName && steelItemId ? (
+                <p className="mt-2 text-sm">
+                  Lámina seleccionada: <strong>{cutJob.materialName}</strong>
+                </p>
+              ) : null}
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2 mt-4">
             <button type="button" className="btn btn-ghost" onClick={() => runCuts()}>

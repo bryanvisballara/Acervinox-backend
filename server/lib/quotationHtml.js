@@ -76,22 +76,22 @@ export function quotationHtml(quote, origin = '') {
   <meta charset="utf-8" />
   <title>Cotización ${esc(quote.number)}</title>
   <style>
-    :root { --navy:#16324f; --red:#e30613; }
+    :root { --slate:#4a4a4a; --red:#e30613; }
     body { font-family: Arial, sans-serif; color:#1a1a1a; margin:0; padding:28px; }
     .top { display:flex; justify-content:space-between; align-items:flex-start; }
     .logo { height:58px; }
     h1 { margin: 18px 0 4px; letter-spacing:.08em; }
     .num { color: var(--red); font-weight:800; }
-    .box { background: var(--navy); color:#fff; padding:16px 18px; display:grid; grid-template-columns: 1fr 1fr; gap:6px 24px; margin:16px 0 22px; }
-    .bar { background: var(--navy); color:#fff; padding:8px 12px; font-weight:700; margin-top:16px; }
+    .box { background: var(--slate); color:#fff; padding:16px 18px; display:grid; grid-template-columns: 1fr 1fr; gap:6px 24px; margin:16px 0 22px; }
+    .bar { background: var(--slate); color:#fff; padding:8px 12px; font-weight:700; margin-top:16px; }
     .row { display:grid; grid-template-columns: 36px 88px 1fr 110px 110px 120px; gap:10px; align-items:start; padding:12px 0; border-bottom:1px solid #e5e5e5; }
-    .row.head { border-bottom:1px solid #cfd6de; padding:8px 0; color:#5b6773; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+    .row.head { border-bottom:1px solid #d4d4d4; padding:8px 0; color:#5a5a5a; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
     .pic { width:88px; height:72px; object-fit:cover; background:#f3f3f3; }
     .pic.empty { border:1px dashed #ccc; }
     .desc ul { margin:6px 0 0; padding-left:16px; font-size:12px; color:#444; }
     .desc .note { margin-top:8px; font-size:12px; line-height:1.45; color:#333; white-space:pre-wrap; }
     .col { text-align:right; font-size:13px; }
-    .col .h { display:block; font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#5b6773; margin-bottom:3px; }
+    .col .h { display:block; font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#5a5a5a; margin-bottom:3px; }
     .col.total { color: var(--red); font-weight:800; }
     .muted { color:#666; font-size:12px; }
     .sum { width:280px; margin-left:auto; margin-top:18px; }

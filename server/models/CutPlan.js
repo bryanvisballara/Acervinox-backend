@@ -31,6 +31,8 @@ const cutPlanSchema = new mongoose.Schema(
     number: { type: String, required: true, unique: true },
     name: { type: String, default: '', trim: true },
     materialName: { type: String, default: '', trim: true },
+    steelCategory: { type: String, default: '', trim: true },
+    steelItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'CostItem' },
     kerf: { type: Number, default: 0, min: 0 },
     pieces: { type: [pieceSchema], default: [] },
     stocks: { type: [stockSchema], default: [] },

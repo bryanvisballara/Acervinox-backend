@@ -2412,6 +2412,13 @@
   margin-top: 18px;
 }
 
+.cut-steel-pick {
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: #fff;
+}
+
 .quote-price-picks {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

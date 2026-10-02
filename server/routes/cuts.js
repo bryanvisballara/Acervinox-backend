@@ -44,7 +44,9 @@ function payload(req) {
   const stocks = cleanStocks(req.body.stocks)
   return {
     name: String(req.body.name || req.body.jobName || '').trim().slice(0, 120),
-    materialName: String(req.body.materialName || '').trim().slice(0, 80),
+    materialName: String(req.body.materialName || '').trim().slice(0, 120),
+    steelCategory: String(req.body.steelCategory || '').trim().slice(0, 40),
+    steelItemId: req.body.steelItemId || undefined,
     kerf: Math.max(0, num(req.body.kerf)),
     pieces,
     stocks,

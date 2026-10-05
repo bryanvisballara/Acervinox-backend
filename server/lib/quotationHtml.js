@@ -58,7 +58,11 @@ export function quotationHtml(quote, origin = '') {
             ${item.steelType || item.gauge ? `<div class="muted">${esc(item.steelType)} ${esc(item.gauge)}</div>` : ''}
             ${itemDetails(item)}
           </div>
-          <div class="col"><span class="h">Neto</span>${cop(item.net)}</div>
+          <div class="col"><span class="h">Neto</span>${
+            item.discountAmount
+              ? `<div class="muted" style="font-size:11px;text-decoration:line-through">${cop(item.grossNet ?? item.net + item.discountAmount)}</div><div class="muted" style="font-size:11px">Desc. ${item.discountPct || 0}% (−${cop(item.discountAmount)})</div>`
+              : ''
+          }${cop(item.net)}</div>
           <div class="col"><span class="h">IVA 19%</span>${cop(item.iva)}</div>
           <div class="col total"><span class="h">Total</span>${cop(item.total)}</div>
         </div>`,
@@ -128,6 +132,11 @@ export function quotationHtml(quote, origin = '') {
   ${block('EQUIPOS IMPORTADOS', groups.importado)}
   ${block('EQUIPOS FABRICACIÓN NACIONAL', groups.nacional)}
   <div class="sum">
+    ${
+      quote.discountTotal
+        ? `<div><span>Descuento</span><strong>− ${cop(quote.discountTotal)}</strong></div>`
+        : ''
+    }
     <div><span>Subtotal</span><strong>${cop(quote.subtotal)}</strong></div>
     <div><span>IVA 19%</span><strong>${cop(quote.iva)}</strong></div>
     <div class="grand"><span>TOTAL</span><span>${cop(quote.total)}</span></div>

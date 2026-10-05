@@ -300,6 +300,7 @@ quotesRouter.put('/quotations/:id', async (req, res) => {
     if (req.body.orderName != null) quote.orderName = String(req.body.orderName).trim()
     quote.items = priced.items
     quote.subtotal = priced.subtotal
+    quote.discountTotal = priced.discountTotal
     quote.iva = priced.iva
     quote.total = priced.total
     await quote.save()

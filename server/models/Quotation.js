@@ -32,6 +32,9 @@ const quoteItemSchema = new mongoose.Schema(
     costTotal: { type: Number, default: 0 },
     priceChoice: { type: String, enum: ['total', 'sale50', 'resale70', 'custom'], default: 'sale50' },
     parts: { type: [quotePartSchema], default: [] },
+    discountPct: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
+    grossNet: { type: Number, default: 0 },
     net: { type: Number, default: 0 },
     iva: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
@@ -60,6 +63,7 @@ const quotationSchema = new mongoose.Schema(
     },
     items: { type: [quoteItemSchema], default: [] },
     subtotal: { type: Number, default: 0 },
+    discountTotal: { type: Number, default: 0 },
     iva: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
     funnelStage: {

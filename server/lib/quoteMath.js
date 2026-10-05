@@ -11,15 +11,35 @@ export function partAmount(part) {
   return money(part.unitPrice) * Number(part.qty || 0)
 }
 
+function clampDiscountPct(pct) {
+  return Math.min(100, Math.max(0, Number(pct) || 0))
+}
+
+export function itemGrossNet(item) {
+  return (item.parts || []).reduce((sum, part) => sum + partAmount(part), 0)
+}
+
 export function calcItem(item) {
-  const net = (item.parts || []).reduce((sum, part) => sum + partAmount(part), 0)
+  const grossNet = itemGrossNet(item)
+  const discountPct = clampDiscountPct(item.discountPct)
+  const discountAmount = Math.round(grossNet * (discountPct / 100))
+  const net = grossNet - discountAmount
   const iva = Math.round(net * IVA)
-  return { ...item, net, iva, total: net + iva }
+  return {
+    ...item,
+    discountPct,
+    discountAmount,
+    grossNet,
+    net,
+    iva,
+    total: net + iva,
+  }
 }
 
 export function calcQuote(items) {
   const priced = items.map(calcItem)
+  const discountTotal = priced.reduce((s, i) => s + (i.discountAmount || 0), 0)
   const subtotal = priced.reduce((s, i) => s + i.net, 0)
   const iva = priced.reduce((s, i) => s + i.iva, 0)
-  return { items: priced, subtotal, iva, total: subtotal + iva }
+  return { items: priced, subtotal, discountTotal, iva, total: subtotal + iva }
 }

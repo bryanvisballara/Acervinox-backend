@@ -68,7 +68,20 @@ type QuoteItem = {
   sheetsUsed?: number
   costTotal?: number
   priceChoice?: QuoteCustomItem['priceChoice']
+  discountPct?: number
   parts: QuotePart[]
+}
+
+function clampDiscountPct(pct: number) {
+  return Math.min(100, Math.max(0, Number(pct) || 0))
+}
+
+function itemGrossNet(item: QuoteItem) {
+  return item.parts.reduce((sum, p) => sum + partAmount(p), 0)
+}
+
+function itemDiscountAmount(item: QuoteItem) {
+  return Math.round(itemGrossNet(item) * (clampDiscountPct(item.discountPct ?? 0) / 100))
 }
 
 function fromCatalog(product: CatalogProduct): QuoteItem {
@@ -124,7 +137,7 @@ function fromPart(part: Part): QuotePart {
 }
 
 function itemNet(item: QuoteItem) {
-  return item.parts.reduce((sum, p) => sum + partAmount(p), 0)
+  return itemGrossNet(item) - itemDiscountAmount(item)
 }
 
 function QuoteItemPhoto({
@@ -300,9 +313,10 @@ export function CotizadorPage() {
   }, [])
 
   const totals = useMemo(() => {
+    const discountTotal = items.reduce((s, item) => s + itemDiscountAmount(item), 0)
     const subtotal = items.reduce((s, item) => s + itemNet(item), 0)
     const iva = Math.round(subtotal * IVA)
-    return { subtotal, iva, total: subtotal + iva }
+    return { discountTotal, subtotal, iva, total: subtotal + iva }
   }, [items])
 
   const fillClient = (client: AdminClient) => {
@@ -645,16 +659,6 @@ export function CotizadorPage() {
                 }
               />
             </label>
-            {item.kind === 'medida' ? (
-              <p className="mt-3 text-right text-sm text-steel">
-                {item.costTotal ? `Costo ${cop(item.costTotal)} · ` : ''}
-                Neto {cop(itemNet(item))} · IVA 19% {cop(Math.round(itemNet(item) * IVA))} ·{' '}
-                <strong className="text-brand">
-                  {cop(itemNet(item) + Math.round(itemNet(item) * IVA))}
-                </strong>
-              </p>
-            ) : (
-            <>
             <div className="table-wrap mt-4">
               <table className="admin-table">
                 <thead>
@@ -746,9 +750,48 @@ export function CotizadorPage() {
                         )}
                       </td>
                       <td>
-                        {part.pricing === 'medida'
-                          ? `${cop(part.unitPrice)} / ${unitLabel(part.unit)}`
-                          : cop(part.unitPrice)}
+                        {part.pricing === 'medida' ? (
+                          <label className="flex items-center gap-2 normal-case tracking-normal">
+                            <NumberField
+                              className="field w-28"
+                              value={part.unitPrice}
+                              onChange={(unitPrice) =>
+                                setItems((prev) =>
+                                  prev.map((row, i) =>
+                                    i === index
+                                      ? {
+                                          ...row,
+                                          parts: row.parts.map((p, j) =>
+                                            j === pi ? { ...p, unitPrice } : p,
+                                          ),
+                                        }
+                                      : row,
+                                  ),
+                                )
+                              }
+                            />
+                            <span className="text-xs text-steel">/ {unitLabel(part.unit)}</span>
+                          </label>
+                        ) : (
+                          <NumberField
+                            className="field w-28"
+                            value={part.unitPrice}
+                            onChange={(unitPrice) =>
+                              setItems((prev) =>
+                                prev.map((row, i) =>
+                                  i === index
+                                    ? {
+                                        ...row,
+                                        parts: row.parts.map((p, j) =>
+                                          j === pi ? { ...p, unitPrice } : p,
+                                        ),
+                                      }
+                                    : row,
+                                ),
+                              )
+                            }
+                          />
+                        )}
                       </td>
                       <td>{cop(partAmount(part))}</td>
                     </tr>
@@ -756,39 +799,65 @@ export function CotizadorPage() {
                 </tbody>
               </table>
             </div>
-            <label className="mt-4 block">
-              Añadir pieza a este producto
-              <select
-                className="field"
-                defaultValue=""
-                onChange={(e) => {
-                  const part = partsLib.find((p) => p._id === e.target.value)
-                  e.currentTarget.value = ''
-                  if (!part) return
-                  setItems((prev) =>
-                    prev.map((row, i) =>
-                      i === index ? { ...row, parts: [...row.parts, fromPart(part)] } : row,
-                    ),
-                  )
-                }}
-              >
-                <option value="">Selecciona una pieza</option>
-                {partsLib.map((p) => (
-                  <option key={p._id} value={p._id}>
-                    {p.name} ·{' '}
-                    {p.pricing === 'medida' ? `${cop(p.price)}/${unitLabel(p.unit)}` : cop(p.price)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="mt-4 flex flex-wrap items-end justify-end gap-4">
+              <label className="text-xs font-semibold uppercase tracking-[0.12em] text-steel">
+                Descuento
+                <div className="mt-1 flex items-center gap-1 normal-case tracking-normal">
+                  <NumberField
+                    className="field w-20 text-right"
+                    value={item.discountPct ?? 0}
+                    onChange={(discountPct) =>
+                      setItems((prev) =>
+                        prev.map((row, i) =>
+                          i === index ? { ...row, discountPct: clampDiscountPct(discountPct) } : row,
+                        ),
+                      )
+                    }
+                  />
+                  <span className="text-sm text-steel">%</span>
+                </div>
+              </label>
+            </div>
+            {item.kind !== 'medida' && (
+              <label className="mt-4 block">
+                Añadir pieza a este producto
+                <select
+                  className="field"
+                  defaultValue=""
+                  onChange={(e) => {
+                    const part = partsLib.find((p) => p._id === e.target.value)
+                    e.currentTarget.value = ''
+                    if (!part) return
+                    setItems((prev) =>
+                      prev.map((row, i) =>
+                        i === index ? { ...row, parts: [...row.parts, fromPart(part)] } : row,
+                      ),
+                    )
+                  }}
+                >
+                  <option value="">Selecciona una pieza</option>
+                  {partsLib.map((p) => (
+                    <option key={p._id} value={p._id}>
+                      {p.name} ·{' '}
+                      {p.pricing === 'medida' ? `${cop(p.price)}/${unitLabel(p.unit)}` : cop(p.price)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <p className="mt-3 text-right text-sm text-steel">
+              {item.kind === 'medida' && item.costTotal ? `Costo ${cop(item.costTotal)} · ` : ''}
+              {itemDiscountAmount(item) > 0 ? (
+                <>
+                  Bruto {cop(itemGrossNet(item))} · Descuento {clampDiscountPct(item.discountPct ?? 0)}% (
+                  −{cop(itemDiscountAmount(item))}) ·{' '}
+                </>
+              ) : null}
               Neto {cop(itemNet(item))} · IVA 19% {cop(Math.round(itemNet(item) * IVA))} ·{' '}
               <strong className="text-brand">
                 {cop(itemNet(item) + Math.round(itemNet(item) * IVA))}
               </strong>
             </p>
-            </>
-            )}
           </article>
         ))}
 
@@ -804,6 +873,7 @@ export function CotizadorPage() {
       <section className="admin-card quote-actions">
         <div>
           <p className="text-sm text-steel">
+            {totals.discountTotal > 0 ? <>Descuento −{cop(totals.discountTotal)} · </> : null}
             Subtotal {cop(totals.subtotal)} · IVA 19% {cop(totals.iva)}
           </p>
           <strong className="font-display text-3xl text-brand">{cop(totals.total)}</strong>

@@ -8,6 +8,7 @@ const pieceSchema = new mongoose.Schema(
     width: { type: Number, default: 0 },
     qty: { type: Number, default: 1 },
     material: { type: String, default: '' },
+    stockId: { type: String, default: '' },
     allowRotate: { type: Boolean, default: true },
   },
   { _id: false },
@@ -21,6 +22,8 @@ const stockSchema = new mongoose.Schema(
     width: { type: Number, default: 0 },
     qty: { type: Number, default: 0 },
     material: { type: String, default: '' },
+    steelCategory: { type: String, default: '' },
+    steelItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'CostItem' },
   },
   { _id: false },
 )

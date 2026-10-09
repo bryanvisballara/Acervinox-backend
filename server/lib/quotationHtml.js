@@ -80,7 +80,7 @@ export function quotationHtml(quote, origin = '') {
   <meta charset="utf-8" />
   <title>Cotización ${esc(quote.number)}</title>
   <style>
-    :root { --slate:#4a4a4a; --red:#e30613; }
+    :root { --slate:#808080; --red:#e30613; }
     body { font-family: Arial, sans-serif; color:#1a1a1a; margin:0; padding:28px; }
     .top { display:flex; justify-content:space-between; align-items:flex-start; }
     .logo { height:58px; }

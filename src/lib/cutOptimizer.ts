@@ -5,6 +5,8 @@ export type CutPieceInput = {
   width: number
   qty: number
   material: string
+  /** Lámina de stock a usar (debe coincidir con stock.material al calcular). */
+  stockId?: string
   allowRotate: boolean
 }
 
@@ -15,6 +17,8 @@ export type StockInput = {
   width: number
   qty: number
   material: string
+  steelCategory?: string
+  steelItemId?: string
 }
 
 export type PlacedPiece = {

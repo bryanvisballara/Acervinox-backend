@@ -19,6 +19,7 @@ function cleanPieces(list) {
       width: Math.max(0, num(p.width)),
       qty: Math.max(0, Math.floor(num(p.qty, 1))),
       material: String(p.material || '').trim().slice(0, 80),
+      stockId: String(p.stockId || '').trim().slice(0, 40),
       allowRotate: p.allowRotate !== false,
     }))
     .filter((p) => p.length > 0 && p.width > 0 && p.qty > 0)
@@ -34,6 +35,8 @@ function cleanStocks(list) {
       width: Math.max(0, num(s.width)),
       qty: Math.max(0, Math.floor(num(s.qty))),
       material: String(s.material || '').trim().slice(0, 80),
+      steelCategory: String(s.steelCategory || '').trim().slice(0, 40),
+      steelItemId: s.steelItemId || undefined,
     }))
     .filter((s) => s.length > 0 && s.width > 0)
     .slice(0, 20)

@@ -12,15 +12,11 @@ import {
   type OptimizeResult,
   type StockInput,
 } from '../../lib/cutOptimizer'
+import { CUT_PAGE_PRESETS } from '../../lib/cutPresets'
 
 const STORAGE_KEY = 'acervinox_cut_job'
 
-const PRESETS: { label: string; length: number; width: number }[] = [
-  { label: '1220 × 2440', length: 2440, width: 1220 },
-  { label: '1000 × 2000', length: 2000, width: 1000 },
-  { label: '1250 × 2500', length: 2500, width: 1250 },
-  { label: '1500 × 3000', length: 3000, width: 1500 },
-]
+const PRESETS = CUT_PAGE_PRESETS
 
 type Job = {
   jobName: string
@@ -493,7 +489,10 @@ export function CuttingPage() {
             <div className="admin-card-head">
               <div>
                 <h2>Lámina que se compra</h2>
-                <p>Cantidad 0 = las que hagan falta. El material se toma del nombre de arriba.</p>
+                <p>
+                  Cantidad 0 = las que hagan falta. Rollo 1220×Y: largo por defecto 40 m (40 000 mm), editable si
+                  necesitas otro metraje.
+                </p>
               </div>
               <button type="button" className="btn btn-ghost" onClick={() => setJob((j) => ({ ...j, stocks: [...j.stocks, emptyStock(j.materialName)] }))}>
                 <Plus size={15} />

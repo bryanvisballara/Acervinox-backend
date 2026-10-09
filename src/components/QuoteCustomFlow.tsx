@@ -33,6 +33,7 @@ import {
   type StockInput,
 } from '../lib/cutOptimizer'
 import { compressImage, cop } from '../lib/image'
+import { QUOTE_CUT_PRESETS } from '../lib/cutPresets'
 
 const STEEL_SHEET_CATEGORIES = ['acero_304', 'acero_430'] as const
 
@@ -44,12 +45,7 @@ function composeSheetMaterial(categoryLabel: string, item: { name: string; varia
   return `${categoryLabel} · ${steelMaterialLabel(item)}`
 }
 
-const PRESETS = [
-  { label: '1220 × 2440', length: 2440, width: 1220 },
-  { label: '1000 × 2000', length: 2000, width: 1000 },
-  { label: '1250 × 2500', length: 2500, width: 1250 },
-  { label: '1500 × 3000', length: 3000, width: 1500 },
-]
+const PRESETS = QUOTE_CUT_PRESETS
 
 export type QuotePriceChoice = 'total' | 'sale50' | 'resale70' | 'custom'
 
@@ -113,32 +109,73 @@ function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function emptyPiece(material = 'Acero inoxidable'): CutPieceInput {
-  return { id: uid('p'), label: '', length: 0, width: 0, qty: 1, material, allowRotate: true }
+function defaultPieceMaterial(stocks: StockInput[]) {
+  const first = stocks.find((s) => s.length > 0 && s.width > 0) || stocks[0]
+  return { material: first?.material || 'Acero inoxidable', stockId: first?.id }
+}
+
+function emptyPiece(stocks: StockInput[] = []): CutPieceInput {
+  const base = defaultPieceMaterial(stocks.length ? stocks : [emptyStock()])
+  return { id: uid('p'), label: '', length: 0, width: 0, qty: 1, allowRotate: true, ...base }
 }
 
 function emptyStock(material = 'Acero inoxidable'): StockInput {
   return { id: uid('s'), label: 'Lámina', length: 3000, width: 1500, qty: 0, material }
 }
 
+function syncPieceMaterials(job: CutJob): CutJob {
+  return {
+    ...job,
+    pieces: job.pieces.map((p) => {
+      if (!p.stockId) return p
+      const stock = job.stocks.find((s) => s.id === p.stockId)
+      return stock ? { ...p, material: stock.material || p.material } : p
+    }),
+  }
+}
+
+function materialNamesFromJob(job: CutJob) {
+  return [...new Set(job.stocks.map((s) => String(s.material || '').trim()).filter(Boolean))]
+}
+
+function stockSteelMaterial(
+  stock: StockInput,
+  categoryId: string,
+  itemId: string,
+  categories: Category[],
+  costItems: CostCatalogItem[],
+): StockInput {
+  const catalog = costItems.find((it) => it._id === itemId)
+  const cat = categories.find((c) => c.id === categoryId)
+  if (!catalog || !cat) return stock
+  const material = composeSheetMaterial(cat.label, catalog)
+  return {
+    ...stock,
+    steelCategory: categoryId,
+    steelItemId: itemId,
+    material,
+  }
+}
+
 function defaultCutJob(name: string): CutJob {
+  const stocks = [emptyStock()]
   return {
     jobName: name,
     materialName: 'Acero inoxidable',
-    pieces: [emptyPiece()],
-    stocks: [emptyStock()],
+    pieces: [emptyPiece(stocks)],
+    stocks,
     kerf: 0,
   }
 }
 
-function applyMaterial(job: CutJob, materialName: string): CutJob {
-  const prev = job.materialName
-  return {
-    ...job,
-    materialName,
-    pieces: job.pieces.map((p) => (p.material === prev || !p.material ? { ...p, material: materialName } : p)),
-    stocks: job.stocks.map((s) => (s.material === prev || !s.material ? { ...s, material: materialName } : s)),
-  }
+function migratePlanStocks(
+  stocks: StockInput[],
+  plan: { steelCategory?: string; steelItemId?: string },
+): StockInput[] {
+  if (!plan.steelCategory || !plan.steelItemId) return stocks
+  return stocks.map((s) =>
+    s.steelItemId ? s : { ...s, steelCategory: plan.steelCategory, steelItemId: String(plan.steelItemId) },
+  )
 }
 
 function salePrice(choice: QuotePriceChoice, totals: ReturnType<typeof costTotals>, custom: number) {
@@ -221,8 +258,6 @@ export function QuoteCustomFlow({
   const [resellerMarginPct, setResellerMarginPct] = useState(() =>
     clampResellerMarginPct(item.resellerMarginPct ?? DEFAULT_RESELLER_MARGIN_PCT),
   )
-  const [steelCategory, setSteelCategory] = useState(item.steelCategory || '')
-  const [steelItemId, setSteelItemId] = useState(item.steelItemId || '')
 
   useEffect(() => {
     api('/api/costs/items')
@@ -234,28 +269,61 @@ export function QuoteCustomFlow({
   }, [])
 
   useEffect(() => {
+    if (!costItems.length || !categories.length) return
+    setCutJob((j) => {
+      let touched = false
+      const stocks = j.stocks.map((s) => {
+        if (!s.steelItemId || !s.steelCategory) return s
+        const next = stockSteelMaterial(s, s.steelCategory, s.steelItemId, categories, costItems)
+        if (next.material !== s.material) touched = true
+        return next
+      })
+      if (!touched) return j
+      return syncPieceMaterials({ ...j, stocks })
+    })
+  }, [costItems, categories])
+
+  useEffect(() => {
     if (!item.cutPlanId) return
     api(`/api/cuts/${item.cutPlanId}`)
       .then((data) => {
         const plan = data.plan
         const material = plan.materialName || 'Acero inoxidable'
+        let stocks: StockInput[] = plan.stocks?.length
+          ? plan.stocks.map((s: StockInput) => ({
+              ...s,
+              id: s.id || uid('s'),
+              material: s.material || material,
+              steelCategory: s.steelCategory || plan.steelCategory || '',
+              steelItemId: s.steelItemId ? String(s.steelItemId) : plan.steelItemId ? String(plan.steelItemId) : '',
+            }))
+          : [emptyStock(material)]
+        stocks = migratePlanStocks(stocks, plan)
         const next: CutJob = {
           jobName: plan.name || item.name,
           materialName: material,
           kerf: plan.kerf || 0,
           pieces: plan.pieces?.length
-            ? plan.pieces.map((p: CutPieceInput) => ({ ...p, id: p.id || uid('p'), material: p.material || material }))
-            : [emptyPiece(material)],
-          stocks: plan.stocks?.length
-            ? plan.stocks.map((s: StockInput) => ({ ...s, id: s.id || uid('s'), material: s.material || material }))
-            : [emptyStock(material)],
+            ? plan.pieces.map((p: CutPieceInput) => ({
+                ...p,
+                id: p.id || uid('p'),
+                material: p.material || material,
+                stockId: p.stockId || stocks[0]?.id,
+              }))
+            : [emptyPiece(stocks)],
+          stocks,
         }
-        setCutJob(next)
+        const synced = syncPieceMaterials(next)
+        setCutJob(synced)
         setCutPlanId(plan._id)
-        if (plan.steelCategory) setSteelCategory(plan.steelCategory)
-        if (plan.steelItemId) setSteelItemId(String(plan.steelItemId))
         try {
-          setCutResult(optimizeCuts(next.pieces.filter((p) => p.length && p.width && p.qty), next.stocks.filter((s) => s.length && s.width), { kerf: next.kerf }))
+          setCutResult(
+            optimizeCuts(
+              synced.pieces.filter((p) => p.length && p.width && p.qty),
+              synced.stocks.filter((s) => s.length && s.width),
+              { kerf: synced.kerf },
+            ),
+          )
         } catch {
           setCutResult(null)
         }
@@ -317,62 +385,110 @@ export function QuoteCustomFlow({
     () => categories.filter((c) => (STEEL_SHEET_CATEGORIES as readonly string[]).includes(c.id)),
     [categories],
   )
-  const steelMaterialOptions = useMemo(() => {
-    if (!steelCategory) return []
-    return costItems
-      .filter((it) => it.category === steelCategory)
-      .sort((a, b) => `${a.name}${a.variant}`.localeCompare(`${b.name}${b.variant}`, 'es'))
-  }, [costItems, steelCategory])
+  const cutMaterialsLabel = useMemo(() => {
+    const names = materialNamesFromJob(cutJob)
+    return names.length ? names.join(' · ') : cutJob.materialName
+  }, [cutJob])
 
   const sheetStockReady = cutJob.stocks.some((s) => s.length > 0 && s.width > 0)
 
-  const pickSteelCategory = (nextCategory: string) => {
-    setSteelCategory(nextCategory)
-    setSteelItemId('')
-    const label = categories.find((c) => c.id === nextCategory)?.label || ''
-    setCutJob((j) => applyMaterial(j, label || j.materialName))
-    updateItem({ steelCategory: nextCategory, steelItemId: '', steelType: label, gauge: '' })
+  const patchCutJob = (patch: (job: CutJob) => CutJob) => {
+    setCutJob((j) => syncPieceMaterials(patch(j)))
   }
 
-  const pickSteelMaterial = (nextItemId: string) => {
-    const catalog = costItems.find((it) => it._id === nextItemId)
-    const cat = categories.find((c) => c.id === steelCategory)
-    if (!catalog || !cat) return
-    setSteelItemId(nextItemId)
-    const materialName = composeSheetMaterial(cat.label, catalog)
-    const gauge = steelMaterialLabel(catalog)
-    setCutJob((j) => applyMaterial(j, materialName))
-    updateItem({
-      steelCategory,
-      steelItemId: nextItemId,
-      steelType: cat.label,
-      gauge,
-    })
+  const setStockSteelCategory = (stockId: string, nextCategory: string) => {
+    patchCutJob((j) => ({
+      ...j,
+      stocks: j.stocks.map((s) =>
+        s.id === stockId ? { ...s, steelCategory: nextCategory, steelItemId: '', material: s.label || 'Lámina' } : s,
+      ),
+    }))
   }
 
-  const ensureSteelCostLine = () => {
-    if (!steelItemId || !cutResult?.sheetsUsed) return
-    const catalog = costItems.find((it) => it._id === steelItemId)
-    if (!catalog) return
-    const qty = cutResult.sheetsUsed
-    setLines((prev) => {
-      const hit = prev.find((l) => l.item === steelItemId)
-      if (hit) {
-        return prev.map((l) => (l.item === steelItemId ? { ...l, qty: Math.max(l.qty, qty), price: catalog.price } : l))
+  const setStockSteelMaterial = (stockId: string, nextItemId: string) => {
+    patchCutJob((j) => ({
+      ...j,
+      stocks: j.stocks.map((s) => {
+        if (s.id !== stockId) return s
+        if (!nextItemId) return { ...s, steelItemId: '' }
+        const categoryId = s.steelCategory || ''
+        return stockSteelMaterial(s, categoryId, nextItemId, categories, costItems)
+      }),
+    }))
+  }
+
+  const assignPieceStock = (pieceId: string, stockId: string) => {
+    patchCutJob((j) => ({
+      ...j,
+      pieces: j.pieces.map((p) => {
+        if (p.id !== pieceId) return p
+        const stock = j.stocks.find((s) => s.id === stockId)
+        if (!stock) return { ...p, stockId: undefined }
+        return { ...p, stockId, material: stock.material || p.material }
+      }),
+    }))
+  }
+
+  const quoteSteelFromStocks = (stocks: StockInput[]) => {
+    const configured = stocks.filter((s) => s.steelItemId && s.steelCategory)
+    if (!configured.length) {
+      return { steelCategory: item.steelCategory || '', steelItemId: item.steelItemId || '', steelType: '', gauge: '' }
+    }
+    const types = [...new Set(configured.map((s) => categories.find((c) => c.id === s.steelCategory)?.label || '').filter(Boolean))]
+    const gauges = [
+      ...new Set(
+        configured
+          .map((s) => {
+            const catalog = costItems.find((it) => it._id === s.steelItemId)
+            return catalog ? steelMaterialLabel(catalog) : ''
+          })
+          .filter(Boolean),
+      ),
+    ]
+    const first = configured[0]
+    return {
+      steelCategory: configured.length === 1 ? first.steelCategory || '' : '',
+      steelItemId: configured.length === 1 ? first.steelItemId || '' : '',
+      steelType: types.join(' · ') || item.steelType,
+      gauge: gauges.join(' · ') || item.gauge,
+    }
+  }
+
+  const ensureSteelCostLines = () => {
+    if (!cutResult?.sheets.length) return
+    const counts = new Map<string, number>()
+    for (const sheet of cutResult.sheets) {
+      const stock = cutJob.stocks.find((s) => s.id === sheet.stockId)
+      if (stock?.steelItemId) {
+        counts.set(stock.steelItemId, (counts.get(stock.steelItemId) || 0) + 1)
       }
-      return [
-        ...prev,
-        {
-          key: newCostKey(),
-          item: catalog._id,
-          category: catalog.category,
-          name: catalog.name,
-          variant: catalog.variant,
-          unit: catalog.unit,
-          qty,
-          price: catalog.price,
-        },
-      ]
+    }
+    if (!counts.size) return
+    setLines((prev) => {
+      let next = [...prev]
+      for (const [itemId, qty] of counts) {
+        const catalog = costItems.find((it) => it._id === itemId)
+        if (!catalog) continue
+        const hit = next.find((l) => l.item === itemId)
+        if (hit) {
+          next = next.map((l) => (l.item === itemId ? { ...l, qty: Math.max(l.qty, qty), price: catalog.price } : l))
+        } else {
+          next = [
+            ...next,
+            {
+              key: newCostKey(),
+              item: catalog._id,
+              category: catalog.category,
+              name: catalog.name,
+              variant: catalog.variant,
+              unit: catalog.unit,
+              qty,
+              price: catalog.price,
+            },
+          ]
+        }
+      }
+      return next
     })
     setSection('mp')
     setJobTab('acero')
@@ -380,8 +496,18 @@ export function QuoteCustomFlow({
 
   const requireSteelIfSheet = () => {
     if (!sheetStockReady) return
-    if (!steelCategory || !steelItemId) {
-      throw new Error('Elige el tipo de acero y el material de la lámina.')
+    const stocks = cutJob.stocks.filter((s) => s.length > 0 && s.width > 0)
+    for (const s of stocks) {
+      if (!s.steelItemId) {
+        throw new Error(`Elige el material de acero para «${s.label || `${s.length}×${s.width}`}».`)
+      }
+    }
+    const readyIds = new Set(stocks.map((s) => s.id))
+    const pieces = cutJob.pieces.filter((p) => p.length > 0 && p.width > 0 && p.qty > 0)
+    for (const p of pieces) {
+      if (p.stockId && !readyIds.has(p.stockId)) {
+        throw new Error(`El corte «${p.label || 'sin nombre'}» apunta a un formato que ya no existe.`)
+      }
     }
   }
 
@@ -398,12 +524,12 @@ export function QuoteCustomFlow({
   const runCuts = (nextJob = cutJob) => {
     setError('')
     try {
-      const pieces = nextJob.pieces.filter((p) => p.length > 0 && p.width > 0 && p.qty > 0)
-      const stocks = nextJob.stocks.filter((s) => s.length > 0 && s.width > 0)
+      const synced = syncPieceMaterials(nextJob)
+      const pieces = synced.pieces.filter((p) => p.length > 0 && p.width > 0 && p.qty > 0)
+      const stocks = synced.stocks.filter((s) => s.length > 0 && s.width > 0)
       if (!pieces.length) throw new Error('Agrega al menos un corte con largo, ancho y cantidad.')
       if (!stocks.length) throw new Error('Agrega al menos una lámina de stock.')
-      if (steelCategory && !steelItemId) throw new Error('Elige el material de acero para esa lámina.')
-      const next = optimizeCuts(pieces, stocks, { kerf: nextJob.kerf })
+      const next = optimizeCuts(pieces, stocks, { kerf: synced.kerf })
       setCutResult(next)
       return next
     } catch (err) {
@@ -417,14 +543,17 @@ export function QuoteCustomFlow({
     const computed = nextResult || runCuts(nextJob)
     if (!computed) return ''
     const designsNow = groupSheetDesigns(computed.sheets)
+    const synced = syncPieceMaterials(nextJob)
+    const names = materialNamesFromJob(synced)
+    const steelMeta = quoteSteelFromStocks(synced.stocks)
     const body = {
-      name: item.name || nextJob.jobName || 'Producto a la medida',
-      materialName: nextJob.materialName,
-      steelCategory: steelCategory || undefined,
-      steelItemId: steelItemId || undefined,
-      kerf: nextJob.kerf,
-      pieces: nextJob.pieces,
-      stocks: nextJob.stocks,
+      name: item.name || synced.jobName || 'Producto a la medida',
+      materialName: names.length === 1 ? names[0] : names.join(' · ') || synced.materialName,
+      steelCategory: steelMeta.steelCategory || undefined,
+      steelItemId: steelMeta.steelItemId || undefined,
+      kerf: synced.kerf,
+      pieces: synced.pieces,
+      stocks: synced.stocks,
       sheetsUsed: computed.sheetsUsed,
       utilization: computed.utilization,
       scrap: computed.scrap,
@@ -437,7 +566,11 @@ export function QuoteCustomFlow({
         ? await api(`/api/cuts/${cutPlanId}`, { method: 'PATCH', body: JSON.stringify(body) })
         : await api('/api/cuts', { method: 'POST', body: JSON.stringify(body) })
     setCutPlanId(data.plan._id)
-    updateItem({ cutPlanId: data.plan._id, sheetsUsed: computed.sheetsUsed })
+    updateItem({
+      cutPlanId: data.plan._id,
+      sheetsUsed: computed.sheetsUsed,
+      ...quoteSteelFromStocks(synced.stocks),
+    })
     return data.plan._id as string
   }
 
@@ -448,7 +581,7 @@ export function QuoteCustomFlow({
       product: productId || null,
       quotation: quoteId || null,
       quoteItemId: item._id || null,
-      notes: cutResult ? `${cutResult.sheetsUsed} láminas · ${cutJob.materialName}` : '',
+      notes: cutResult ? `${cutResult.sheetsUsed} láminas · ${cutMaterialsLabel}` : '',
       lines: lines.map((l) => ({ ...l, total: costLineTotal(l) })),
       resellerMarginPct,
     }
@@ -472,7 +605,7 @@ export function QuoteCustomFlow({
       requireSteelIfSheet()
       if (cutJob.pieces.some((p) => p.length > 0 && p.width > 0 && p.qty > 0)) {
         await saveCuts()
-        ensureSteelCostLine()
+        ensureSteelCostLines()
       }
       setStep('costos')
     } catch (err) {
@@ -511,15 +644,16 @@ export function QuoteCustomFlow({
     setBusy(true)
     try {
       if (lines.length) await saveCosts()
+      const steelMeta = quoteSteelFromStocks(cutJob.stocks)
       const next: QuoteCustomItem = {
         ...item,
         costTotal: totals.total,
         priceChoice: choice,
         resellerMarginPct: totals.resellerMarginPct,
-        steelCategory,
-        steelItemId,
-        steelType: item.steelType,
-        gauge: item.gauge,
+        steelCategory: steelMeta.steelCategory,
+        steelItemId: steelMeta.steelItemId,
+        steelType: steelMeta.steelType || item.steelType,
+        gauge: steelMeta.gauge || item.gauge,
         sheetsUsed: cutResult?.sheetsUsed ?? item.sheetsUsed ?? 0,
         parts: pricedParts(item.name, price),
       }
@@ -656,7 +790,7 @@ export function QuoteCustomFlow({
               <h2>Cortes que necesitas</h2>
               <p>Medidas en milímetros.</p>
             </div>
-            <button type="button" className="btn btn-ghost" onClick={() => setCutJob((j) => ({ ...j, pieces: [...j.pieces, emptyPiece(j.materialName)] }))}>
+            <button type="button" className="btn btn-ghost" onClick={() => patchCutJob((j) => ({ ...j, pieces: [...j.pieces, emptyPiece(j.stocks)] }))}>
               <Plus size={15} /> Corte
             </button>
           </div>
@@ -668,6 +802,7 @@ export function QuoteCustomFlow({
                   <th>Largo</th>
                   <th>Ancho</th>
                   <th>Cant.</th>
+                  <th>Cortar de</th>
                   <th>Rotar</th>
                   <th></th>
                 </tr>
@@ -687,6 +822,21 @@ export function QuoteCustomFlow({
                     <td>
                       <NumberField className="field" value={p.qty} onChange={(qty) => setCutJob((j) => ({ ...j, pieces: j.pieces.map((x) => (x.id === p.id ? { ...x, qty } : x)) }))} />
                     </td>
+                    <td>
+                      <select
+                        className="field cut-stock-pick"
+                        value={p.stockId || cutJob.stocks[0]?.id || ''}
+                        onChange={(e) => assignPieceStock(p.id, e.target.value)}
+                      >
+                        {cutJob.stocks
+                          .filter((s) => s.length > 0 && s.width > 0)
+                          .map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.label || `${formatMm(s.length)} × ${formatMm(s.width)}`}
+                            </option>
+                          ))}
+                      </select>
+                    </td>
                     <td className="cut-check">
                       <input type="checkbox" checked={p.allowRotate} onChange={(e) => setCutJob((j) => ({ ...j, pieces: j.pieces.map((x) => (x.id === p.id ? { ...x, allowRotate: e.target.checked } : x)) }))} />
                     </td>
@@ -703,9 +853,19 @@ export function QuoteCustomFlow({
 
           <div className="admin-card-head mt-6">
             <div>
-              <h2>Lámina que se compra</h2>
-              <p>Cantidad 0 = las que hagan falta.</p>
+              <h2>Formatos de lámina / rollo</h2>
+              <p>
+                Puedes mezclar varios tamaños. Cantidad 0 = las que hagan falta. Rollo 1220×Y: 40 m por defecto
+                (editable). Elige acero en cada fila.
+              </p>
             </div>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => patchCutJob((j) => ({ ...j, stocks: [...j.stocks, emptyStock()] }))}
+            >
+              <Plus size={15} /> Formato
+            </button>
           </div>
           <div className="cut-presets">
             {PRESETS.map((preset) => (
@@ -713,20 +873,31 @@ export function QuoteCustomFlow({
                 key={preset.label}
                 type="button"
                 className="btn btn-ghost"
-                onClick={() => setCutJob((j) => ({ ...j, stocks: [{ ...emptyStock(j.materialName), ...preset, label: `Lámina ${preset.label}` }] }))}
+                onClick={() =>
+                  patchCutJob((j) => ({
+                    ...j,
+                    stocks: [
+                      ...j.stocks,
+                      { ...emptyStock(), ...preset, label: preset.label.includes('rollo') ? `Rollo ${preset.label}` : `Lámina ${preset.label}` },
+                    ],
+                  }))
+                }
               >
-                {preset.label}
+                + {preset.label}
               </button>
             ))}
           </div>
           <div className="table-wrap mt-3">
-            <table className="admin-table cut-table">
+            <table className="admin-table cut-table cut-stock-table">
               <thead>
                 <tr>
                   <th>Nombre</th>
                   <th>Largo</th>
                   <th>Ancho</th>
                   <th>Cant.</th>
+                  <th>Tipo acero</th>
+                  <th>Material</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -744,58 +915,71 @@ export function QuoteCustomFlow({
                     <td>
                       <NumberField className="field" value={s.qty} onChange={(qty) => setCutJob((j) => ({ ...j, stocks: j.stocks.map((x) => (x.id === s.id ? { ...x, qty } : x)) }))} />
                     </td>
+                    <td>
+                      <select className="field" value={s.steelCategory || ''} onChange={(e) => setStockSteelCategory(s.id, e.target.value)}>
+                        <option value="">304 / 430…</option>
+                        {steelCategoryOptions.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        className="field"
+                        value={s.steelItemId || ''}
+                        disabled={!s.steelCategory}
+                        onChange={(e) => setStockSteelMaterial(s.id, e.target.value)}
+                      >
+                        <option value="">{s.steelCategory ? 'Calibre…' : 'Tipo primero'}</option>
+                        {costItems
+                          .filter((it) => it.category === s.steelCategory)
+                          .sort((a, b) => `${a.name}${a.variant}`.localeCompare(`${b.name}${b.variant}`, 'es'))
+                          .map((it) => (
+                            <option key={it._id} value={it._id}>
+                              {steelMaterialLabel(it)}
+                              {it.price ? ` · ${cop(it.price)}` : ''}
+                            </option>
+                          ))}
+                      </select>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label="Quitar formato"
+                        onClick={() =>
+                          patchCutJob((j) => {
+                            if (j.stocks.length <= 1) return j
+                            const remaining = j.stocks.filter((x) => x.id !== s.id)
+                            const fallback = remaining[0]
+                            return {
+                              ...j,
+                              stocks: remaining,
+                              pieces: j.pieces.map((p) =>
+                                p.stockId === s.id
+                                  ? { ...p, stockId: fallback?.id, material: fallback?.material || p.material }
+                                  : p,
+                              ),
+                            }
+                          })
+                        }
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          {sheetStockReady && (
-            <div className="cut-steel-pick mt-4">
-              <p className="text-sm text-steel mb-3">2. Elige el acero de la lista de costos (materia prima → Acero).</p>
-              <div className="quote-grid">
-                <label>
-                  Tipo de acero
-                  <select className="field" value={steelCategory} onChange={(e) => pickSteelCategory(e.target.value)}>
-                    <option value="">Selecciona 304 o 430…</option>
-                    {steelCategoryOptions.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Material
-                  <select
-                    className="field"
-                    value={steelItemId}
-                    disabled={!steelCategory}
-                    onChange={(e) => pickSteelMaterial(e.target.value)}
-                  >
-                    <option value="">{steelCategory ? 'Calibre / formato…' : 'Primero el tipo de acero'}</option>
-                    {steelMaterialOptions.map((it) => (
-                      <option key={it._id} value={it._id}>
-                        {steelMaterialLabel(it)}
-                        {it.price ? ` · ${cop(it.price)}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              {cutJob.materialName && steelItemId ? (
-                <p className="mt-2 text-sm">
-                  Lámina seleccionada: <strong>{cutJob.materialName}</strong>
-                </p>
-              ) : null}
-            </div>
-          )}
-
           <div className="flex flex-wrap gap-2 mt-4">
             <button type="button" className="btn btn-ghost" onClick={() => runCuts()}>
               <Scissors size={15} /> Calcular cortes
             </button>
-            <button type="button" className="btn btn-ghost" disabled={!cutResult?.sheets.length} onClick={() => openPrintDocument(cutPlanHtml(cutResult!, designs, { jobName: item.name, materialName: cutJob.materialName, origin: window.location.origin }), 'acervinox-cortes')}>
+            <button type="button" className="btn btn-ghost" disabled={!cutResult?.sheets.length} onClick={() => openPrintDocument(cutPlanHtml(cutResult!, designs, { jobName: item.name, materialName: cutMaterialsLabel, origin: window.location.origin }), 'acervinox-cortes')}>
               <FileDown size={15} /> PDF del despiece
             </button>
             <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => { setCutResult(null); setStep('costos') }}>
@@ -845,7 +1029,7 @@ export function QuoteCustomFlow({
         <div className="quote-custom-body">
           <p className="text-sm text-steel">
             {cutResult
-              ? `Este despiece usa ${cutResult.sheetsUsed} lámina${cutResult.sheetsUsed === 1 ? '' : 's'} de ${cutJob.materialName}. Agrégalas en Acero y suma fabricación, abrasivos e instalación.`
+              ? `Este despiece usa ${cutResult.sheetsUsed} lámina${cutResult.sheetsUsed === 1 ? '' : 's'} (${cutMaterialsLabel}). Revisa Acero en costos — puede haber más de un material.`
               : 'Suma materia prima e instalación de este producto. El total se vuelve el precio de la cotización.'}
           </p>
 

@@ -55,7 +55,6 @@ export function quotationHtml(quote, origin = '') {
           <div class="desc">
             <strong>${esc(item.name)}</strong>
             <div class="muted">Marca: ${esc(item.brand || 'acervinox')} · ${item.origin === 'importado' ? 'Importado' : 'Fabricación nacional'}</div>
-            ${item.steelType || item.gauge ? `<div class="muted">${esc(item.steelType)} ${esc(item.gauge)}</div>` : ''}
             ${itemDetails(item)}
           </div>
           <div class="col"><span class="h">Neto</span>${
@@ -112,7 +111,6 @@ export function quotationHtml(quote, origin = '') {
   <div class="top">
     <div>
       <img class="logo" src="${esc(origin)}/logo-acervinox.png" alt="acervinox" />
-      <div class="muted">Equipos gastronómicos e industriales</div>
     </div>
     <div style="text-align:right">
       <h1>COTIZACIÓN</h1>
@@ -128,6 +126,8 @@ export function quotationHtml(quote, origin = '') {
     <div>Teléfono: ${esc(quote.clientPhone) || '—'}</div>
     <div>Correo: ${esc(quote.clientEmail) || '—'}</div>
     <div>Segmento: ${esc(quote.clientType) || '—'}</div>
+    <div>Cotizado por: ${esc(quote.quotedBy) || '—'}</div>
+    <div></div>
   </div>
   ${block('EQUIPOS IMPORTADOS', groups.importado)}
   ${block('EQUIPOS FABRICACIÓN NACIONAL', groups.nacional)}

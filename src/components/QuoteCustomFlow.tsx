@@ -68,6 +68,8 @@ export type QuoteCustomItem = {
   resellerMarginPct?: number
   steelCategory?: string
   steelItemId?: string
+  costShareGroup?: string
+  isCostPrimary?: boolean
   parts: {
     partId: string
     name: string
@@ -234,7 +236,11 @@ export function QuoteCustomFlow({
   onChange: (item: QuoteCustomItem) => void
   onDone: (item?: QuoteCustomItem) => void
 }) {
-  const [step, setStep] = useState<Step>(item.jobCostId ? 'precio' : item.cutPlanId ? 'costos' : 'cortes')
+  const isSharedLine = Boolean(item.costShareGroup && item.isCostPrimary === false)
+  const [step, setStep] = useState<Step>(() => {
+    if (isSharedLine) return 'precio'
+    return item.jobCostId ? 'precio' : item.cutPlanId ? 'costos' : 'cortes'
+  })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -253,7 +259,9 @@ export function QuoteCustomFlow({
   const [otherName, setOtherName] = useState('')
   const [otherPrice, setOtherPrice] = useState(0)
 
-  const [choice, setChoice] = useState<QuotePriceChoice>(item.priceChoice || 'sale50')
+  const [choice, setChoice] = useState<QuotePriceChoice>(
+    isSharedLine ? 'custom' : item.priceChoice || 'sale50',
+  )
   const [customPrice, setCustomPrice] = useState(item.parts[0]?.unitPrice || 0)
   const [resellerMarginPct, setResellerMarginPct] = useState(() =>
     clampResellerMarginPct(item.resellerMarginPct ?? DEFAULT_RESELLER_MARGIN_PCT),
@@ -569,12 +577,12 @@ export function QuoteCustomFlow({
     updateItem({
       cutPlanId: data.plan._id,
       sheetsUsed: computed.sheetsUsed,
-      ...quoteSteelFromStocks(synced.stocks),
     })
     return data.plan._id as string
   }
 
   const saveCosts = async () => {
+    if (isSharedLine) return jobCostId
     const body = {
       name: item.name,
       client: clientId || null,
@@ -589,11 +597,16 @@ export function QuoteCustomFlow({
       ? await api(`/api/costs/jobs/${jobCostId}`, { method: 'PATCH', body: JSON.stringify(body) })
       : await api('/api/costs/jobs', { method: 'POST', body: JSON.stringify(body) })
     setJobCostId(data.job._id)
+    const group = item.costShareGroup || `cs-${data.job._id}`
     updateItem({
       jobCostId: data.job._id,
       costTotal: totals.total,
       priceChoice: choice,
+      costShareGroup: group,
+      isCostPrimary: true,
       parts: pricedParts(item.name, price),
+      steelType: '',
+      gauge: '',
     })
     return data.job._id as string
   }
@@ -636,27 +649,33 @@ export function QuoteCustomFlow({
       setError('Escribe el precio de este producto')
       return
     }
-    if (choice !== 'custom' && !totals.total) {
+    if (!isSharedLine && choice !== 'custom' && !totals.total) {
       setError('Primero arma el costo, o elige un precio a mano')
       return
     }
     setError('')
     setBusy(true)
     try {
-      if (lines.length) await saveCosts()
-      const steelMeta = quoteSteelFromStocks(cutJob.stocks)
-      const next: QuoteCustomItem = {
-        ...item,
-        costTotal: totals.total,
-        priceChoice: choice,
-        resellerMarginPct: totals.resellerMarginPct,
-        steelCategory: steelMeta.steelCategory,
-        steelItemId: steelMeta.steelItemId,
-        steelType: steelMeta.steelType || item.steelType,
-        gauge: steelMeta.gauge || item.gauge,
-        sheetsUsed: cutResult?.sheetsUsed ?? item.sheetsUsed ?? 0,
-        parts: pricedParts(item.name, price),
-      }
+      if (!isSharedLine && lines.length) await saveCosts()
+      const next: QuoteCustomItem = isSharedLine
+        ? {
+            ...item,
+            priceChoice: 'custom',
+            parts: pricedParts(item.name, price),
+            steelType: '',
+            gauge: '',
+          }
+        : {
+            ...item,
+            costTotal: totals.total,
+            priceChoice: choice,
+            resellerMarginPct: totals.resellerMarginPct,
+            sheetsUsed: cutResult?.sheetsUsed ?? item.sheetsUsed ?? 0,
+            parts: pricedParts(item.name, price),
+            steelType: '',
+            gauge: '',
+            isCostPrimary: item.isCostPrimary !== false,
+          }
       onChange(next)
       onDone(next)
     } catch (err) {
@@ -710,11 +729,13 @@ export function QuoteCustomFlow({
         </button>
         <div className="quote-custom-steps" role="tablist" aria-label="Pasos del producto a la medida">
           {(
-            [
-              ['cortes', '1. Cortes'],
-              ['costos', '2. Costos'],
-              ['precio', '3. Precio'],
-            ] as const
+            isSharedLine
+              ? ([['precio', 'Precio de esta línea']] as const)
+              : ([
+                  ['cortes', '1. Cortes'],
+                  ['costos', '2. Costos'],
+                  ['precio', '3. Precio'],
+                ] as const)
           ).map(([id, label]) => (
             <button
               key={id}
@@ -778,9 +799,15 @@ export function QuoteCustomFlow({
         />
       </label>
       {clientName && <p className="quote-custom-meta">Cliente: {clientName}</p>}
+      {isSharedLine && (
+        <p className="mt-3 text-sm text-steel">
+          Esta línea comparte el mismo corte y costeo que el producto principal. Pon nombre, descripción y precio de
+          venta; el material va en la descripción si lo necesitas.
+        </p>
+      )}
       {error && <p className="mt-3 text-sm text-brand">{error}</p>}
 
-      {step === 'cortes' && (
+      {step === 'cortes' && !isSharedLine && (
         <div className="quote-custom-body">
           <p className="text-sm text-steel">
             Si este producto lleva lámina, arma el despiece. Si no (solo tubo, accesorios o instalación), sáltalo.
@@ -1025,7 +1052,7 @@ export function QuoteCustomFlow({
         </div>
       )}
 
-      {step === 'costos' && (
+      {step === 'costos' && !isSharedLine && (
         <div className="quote-custom-body">
           <p className="text-sm text-steel">
             {cutResult

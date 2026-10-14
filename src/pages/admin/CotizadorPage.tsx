@@ -69,7 +69,19 @@ type QuoteItem = {
   costTotal?: number
   priceChoice?: QuoteCustomItem['priceChoice']
   discountPct?: number
+  costShareGroup?: string
+  isCostPrimary?: boolean
   parts: QuotePart[]
+}
+
+function newCostShareGroup() {
+  return `cs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function primaryCostLabel(items: QuoteItem[], item: QuoteItem) {
+  if (!item.costShareGroup) return ''
+  const primary = items.find((r) => r.costShareGroup === item.costShareGroup && r.isCostPrimary !== false)
+  return primary?.name?.trim() || 'producto principal'
 }
 
 function clampDiscountPct(pct: number) {
@@ -259,6 +271,7 @@ export function CotizadorPage() {
   const [busy, setBusy] = useState(false)
   const [savedId, setSavedId] = useState('')
   const [savedNumber, setSavedNumber] = useState('')
+  const [quotedBy, setQuotedBy] = useState('')
   const [clientModal, setClientModal] = useState(false)
   const [editingCustom, setEditingCustom] = useState<number | null>(null)
 
@@ -280,6 +293,46 @@ export function CotizadorPage() {
     setItems((prev) => [...prev, fromCatalog(product)])
     setOk('')
     setError('')
+  }
+
+  const addSharedMedidaLine = async (sourceIndex: number) => {
+    const src = items[sourceIndex]
+    if (!src?.jobCostId) {
+      setError('Primero termina cortes y costos en la línea principal.')
+      return
+    }
+    setError('')
+    setOk('')
+    setBusy(true)
+    try {
+      const group = src.costShareGroup || newCostShareGroup()
+      const siblings = items.filter((r) => r.costShareGroup === group && r.isCostPrimary === false).length
+      const primaryPatch = { costShareGroup: group, isCostPrimary: true as const }
+      const child: QuoteItem = {
+        ...emptyMedidaItem(`${src.name.trim() || 'Producto'} — línea ${siblings + 2}`),
+        cutPlanId: src.cutPlanId,
+        jobCostId: src.jobCostId,
+        sheetsUsed: src.sheetsUsed,
+        costShareGroup: group,
+        isCostPrimary: false,
+        costTotal: 0,
+        priceChoice: 'custom',
+        steelType: '',
+        gauge: '',
+      }
+      const nextItems = items.map((row, i) => {
+        if (i === sourceIndex) return { ...row, ...primaryPatch }
+        return row
+      })
+      nextItems.push(child)
+      const quote = await persist(nextItems)
+      setEditingCustom(quote.items.length - 1)
+      setOk('Nueva línea con el mismo costeo. Define nombre, descripción y precio.')
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const addCustom = async () => {
@@ -355,12 +408,14 @@ export function CotizadorPage() {
   const applyQuote = (quote: {
     _id: string
     number: string
+    quotedBy?: string
     items: QuoteItem[]
     orderName?: string
     order?: { _id: string; name: string; tracking: string } | null
   }) => {
     setSavedId(quote._id)
     setSavedNumber(quote.number)
+    setQuotedBy(quote.quotedBy || '')
     setItems(quote.items || [])
     if (quote.orderName) setOrderName(quote.orderName)
     if (quote.order?._id) {
@@ -474,6 +529,7 @@ export function CotizadorPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {savedNumber && <span className="quote-number">{savedNumber}</span>}
+            {quotedBy && <span className="text-sm text-steel">Cotizado por {quotedBy}</span>}
             {orderTracking && (
               <Link to={`/admin/pedidos/${orderId}`} className="btn btn-ghost">
                 Pedido {orderTracking}
@@ -623,16 +679,26 @@ export function CotizadorPage() {
                     : item.origin === 'importado'
                       ? 'Importado'
                       : 'Fabricación nacional'}
-                  {item.kind === 'medida' && item.sheetsUsed ? ` · ${item.sheetsUsed} láminas` : ''}
-                  {item.steelType ? ` · ${item.steelType}` : ''}
-                  {item.gauge ? ` · ${item.gauge}` : ''}
+                  {item.kind === 'medida' && item.isCostPrimary !== false && item.sheetsUsed
+                    ? ` · ${item.sheetsUsed} láminas`
+                    : ''}
+                  {item.costShareGroup && item.isCostPrimary === false
+                    ? ` · Mismo costeo que «${primaryCostLabel(items, item)}»`
+                    : ''}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {item.kind === 'medida' && (
-                  <button type="button" className="btn btn-ghost" onClick={() => setEditingCustom(index)}>
-                    Cortar y costear
-                  </button>
+                  <>
+                    <button type="button" className="btn btn-ghost" onClick={() => setEditingCustom(index)}>
+                      {item.isCostPrimary === false ? 'Precio y descripción' : 'Cortar y costear'}
+                    </button>
+                    {item.jobCostId && item.isCostPrimary !== false && (
+                      <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => addSharedMedidaLine(index)}>
+                        <Plus size={16} /> Línea mismo costeo
+                      </button>
+                    )}
+                  </>
                 )}
                 <button
                   type="button"
@@ -846,7 +912,9 @@ export function CotizadorPage() {
               </label>
             )}
             <p className="mt-3 text-right text-sm text-steel">
-              {item.kind === 'medida' && item.costTotal ? `Costo ${cop(item.costTotal)} · ` : ''}
+              {item.kind === 'medida' && item.isCostPrimary !== false && item.costTotal
+                ? `Costo ${cop(item.costTotal)} · `
+                : ''}
               {itemDiscountAmount(item) > 0 ? (
                 <>
                   Bruto {cop(itemGrossNet(item))} · Descuento {clampDiscountPct(item.discountPct ?? 0)}% (

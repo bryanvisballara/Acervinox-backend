@@ -235,6 +235,7 @@ quotesRouter.post('/quotations', async (req, res) => {
       notes: String(req.body.notes || ''),
       orderName: String(req.body.orderName || '').trim(),
       funnelStage: 'cotizacion',
+      quotedBy: quoterName(req.user),
       ...priced,
     })
     try {
@@ -284,6 +285,13 @@ function publicOrigin(req) {
   return `${req.protocol}://${req.get('host')}`
 }
 
+function quoterName(user) {
+  const name = String(user?.name || '').trim()
+  if (name) return name
+  const email = String(user?.email || '').trim()
+  return email ? email.split('@')[0] : ''
+}
+
 quotesRouter.put('/quotations/:id', async (req, res) => {
   try {
     const quote = await Quotation.findById(req.params.id)
@@ -303,6 +311,7 @@ quotesRouter.put('/quotations/:id', async (req, res) => {
     quote.discountTotal = priced.discountTotal
     quote.iva = priced.iva
     quote.total = priced.total
+    if (!quote.quotedBy) quote.quotedBy = quoterName(req.user)
     await quote.save()
     try {
       await syncQuoteOrder(quote, req.user)

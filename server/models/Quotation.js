@@ -31,6 +31,8 @@ const quoteItemSchema = new mongoose.Schema(
     sheetsUsed: { type: Number, default: 0 },
     costTotal: { type: Number, default: 0 },
     priceChoice: { type: String, enum: ['total', 'sale50', 'resale70', 'custom'], default: 'sale50' },
+    costShareGroup: { type: String, default: '' },
+    isCostPrimary: { type: Boolean, default: true },
     parts: { type: [quotePartSchema], default: [] },
     discountPct: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
@@ -75,6 +77,7 @@ const quotationSchema = new mongoose.Schema(
     notes: { type: String, default: '' },
     orderName: { type: String, default: '', trim: true },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+    quotedBy: { type: String, default: '', trim: true },
   },
   { timestamps: true },
 )
